@@ -2,14 +2,15 @@
 
     nfchain explain examples/sra_to_rnaseq.flow
     nfchain build   examples/sra_to_rnaseq.flow
+    nextflow run build_nf/main.nf -stub-run     # dry-run the whole chain
     nfchain run     examples/sra_to_rnaseq.flow --profile docker
 """
 
-from nf-core import sratools
+from nf-core import fetchngs
 from nf-core import rnaseq
 
-# `sratools` is an alias for nf-core/fetchngs, the pipeline that wraps sra-tools.
-sra = sratools(ids=["SRR6357070", "SRR6357071"])
+# fetchngs pulls raw FastQ + a samplesheet from SRA/ENA/GEO/DDBJ.
+sra = fetchngs(ids=["SRR6357070", "SRR6357071"])
 
 # `input` is wired to the samplesheet fetchngs publishes. Drop the argument
 # entirely and nf-chain infers the same edge — this spells it out.

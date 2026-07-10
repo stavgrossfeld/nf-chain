@@ -8,9 +8,9 @@ import pytest
 from nfchain import codegen, dsl, graph
 
 CHAIN_SRC = (
-    "from nf-core import sratools\n"
+    "from nf-core import fetchngs\n"
     "from nf-core import rnaseq\n"
-    "sra = sratools(ids=['SRR1', 'SRR2'])\n"
+    "sra = fetchngs(ids=['SRR1', 'SRR2'])\n"
     "rna = rnaseq(input=sra.samplesheet, genome='GRCh38')\n"
 )
 
@@ -88,8 +88,37 @@ def test_write_emits_project_files(chain, root):
     assert "input" not in rna_params
 
 
+def test_every_process_has_a_stub_block(chain):
+    main = codegen.render_main(chain)
+    assert main.count("stub:") == len(chain.steps)
+
+
+def test_stub_creates_the_consumed_samplesheet(chain):
+    main = codegen.render_main(chain)
+    sra = main.split("process NFCORE_SRA {")[1].split("process ")[0]
+    # the samplesheet rnaseq consumes must be created by the stub, or a
+    # `-stub-run` of the chain would fail at the wire.
+    assert "touch sra/samplesheet/samplesheet.csv" in sra
+
+
+def test_stub_globs_become_concrete_paths(chain):
+    main = codegen.render_main(chain)
+    # `rna/star_salmon/*.markdup.sorted.bam` -> a real file the glob matches
+    assert "touch rna/star_salmon/stub.markdup.sorted.bam" in main
+    # no glob survives on any stub command line, or the touch wouldn't create it
+    stub_cmds = [ln for ln in main.splitlines() if ln.strip().startswith(("touch ", "mkdir "))]
+    assert stub_cmds and all("*" not in ln for ln in stub_cmds)
+
+
 def test_config_records_the_chain(chain):
     cfg = codegen._config(chain)
     assert "sra=nf-core/fetchngs@1.12.0" in cfg
     assert "rna=nf-core/rnaseq@3.26.0" in cfg
     assert "nf_profile" in cfg
+
+
+def test_config_maps_driver_profile_onto_nested_runs(chain):
+    cfg = codegen._config(chain)
+    # `-profile docker` on the driver must set the profile of the nested runs.
+    assert "docker      { params.nf_profile = 'docker' }" in cfg
+    assert "singularity { params.nf_profile = 'singularity' }" in cfg

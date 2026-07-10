@@ -167,11 +167,14 @@ def resolve(flow: Flow, root: Path, refresh: bool = False) -> Chain:
             producer = by_var[wire.source_step]
             _link_fetchngs(producer, rs)
 
-        # 4. Everything required must now be satisfied.
+        # 4. Everything required must now be satisfied. A param that carries a
+        #    default is satisfied by nf-core itself (sarek's `step=mapping`), so
+        #    it doesn't count as missing even when the schema marks it required.
         supplied = set(rs.params) | {w.param for w in rs.wires} | MANAGED_PARAMS
         if rs.accession_input is not None:
             supplied.add("input")
-        missing = [p.name for p in sch.required if p.name not in supplied]
+        has_default = {p.name for p in sch.params.values() if p.default is not None}
+        missing = [p.name for p in sch.required if p.name not in supplied | has_default]
         if missing:
             raise ChainError(
                 f"nf-core/{ref.name} requires {', '.join(missing)} — pass it "

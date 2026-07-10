@@ -93,17 +93,37 @@ def test_fetchngs_is_told_its_downstream_pipeline(root):
 def test_fetchngs_hint_is_skipped_when_downstream_is_not_in_its_enum(root):
     # fetchngs can only pre-format its samplesheet for a handful of pipelines;
     # sarek is not one of them, so the param must be left alone rather than set
-    # to a value the nested run would reject.
+    # to a value the nested run would reject. sarek's `input` is optional, so
+    # the wire is explicit here.
     c = chain(
-        "from nf-core import sratools\n"
+        "from nf-core import fetchngs\n"
         "from nf-core import sarek\n"
-        "s = sratools(ids='SRR1')\n"
-        "v = sarek()\n",
+        "s = fetchngs(ids='SRR1')\n"
+        "v = sarek(input=s.samplesheet)\n",
         root,
     )
     assert "nf_core_pipeline" not in c.steps[0].params
-    # ...but the samplesheet is still wired through.
     assert c.steps[1].wires[0].source_step == "s"
+
+
+def test_required_param_with_a_default_is_not_missing(root):
+    # sarek marks `step` required but gives it default 'mapping'; nf-core fills
+    # it in, so `sarek()` alone must resolve rather than erroring.
+    c = chain("from nf-core import sarek\nv = sarek()\n", root)
+    assert c.steps[0].params == {}
+
+
+def test_optional_input_is_not_autowired(root):
+    # sarek's samplesheet is optional (multi-entry pipeline), so nf-chain does
+    # not guess the wire — you ask for it explicitly.
+    c = chain(
+        "from nf-core import fetchngs\n"
+        "from nf-core import sarek\n"
+        "s = fetchngs(ids='SRR1')\n"
+        "v = sarek()\n",
+        root,
+    )
+    assert c.steps[1].wires == []
 
 
 def test_explicit_nf_core_pipeline_is_not_overridden(root):

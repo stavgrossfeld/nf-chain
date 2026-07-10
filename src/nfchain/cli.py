@@ -19,6 +19,14 @@ class Abort(RuntimeError):
     pass
 
 
+def _rel(path: Path, root: Path) -> str:
+    """Path relative to root when possible, else the path as given."""
+    try:
+        return str(path.relative_to(root))
+    except ValueError:
+        return str(path)
+
+
 def _load(flow_path: Path, refresh: bool) -> tuple[graph.Chain, Path]:
     if not flow_path.exists():
         raise Abort(f"no such flow file: {flow_path}")
@@ -42,7 +50,7 @@ def cmd_sync(args) -> int:
         n_req = len(step.sch.required)
         print(f"  {step.ref.full_name}@{step.ref.revision}  ({n_req} required params)")
     for p in written:
-        print(f"  → {p.relative_to(root)}")
+        print(f"  → {_rel(p, root)}")
     return 0
 
 
@@ -74,7 +82,7 @@ def cmd_build(args) -> int:
     written = codegen.write(chain, outdir)
     print(f"built {len(chain.steps)}-step chain → {args.outdir}/")
     for p in written:
-        print(f"  {p.relative_to(root)}")
+        print(f"  {_rel(p, root)}")
     print(f"\nrun it:  nextflow run {args.outdir}/main.nf -profile docker")
     return 0
 

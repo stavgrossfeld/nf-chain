@@ -131,8 +131,16 @@ SAREK_SCHEMA = {
     "description": "Variant calling",
     "$defs": {
         "input_output_options": {
-            "required": ["input", "outdir"],
+            # Mirrors the real sarek: `step` is required but has a default, and
+            # `input` is optional because sarek can resume from a prior step.
+            "required": ["step", "outdir"],
             "properties": {
+                "step": {
+                    "type": "string",
+                    "default": "mapping",
+                    "enum": ["mapping", "markduplicates", "variant_calling"],
+                    "description": "Starting step",
+                },
                 "input": {
                     "type": "string",
                     "format": "file-path",

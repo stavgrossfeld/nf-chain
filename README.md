@@ -14,7 +14,13 @@ rna = rnaseq(input=sra.samplesheet, genome="GRCh38")
 ```console
 $ nfchain build examples/sra_to_rnaseq.flow
 built 2-step chain → build_nf/
-$ nextflow run build_nf/main.nf -profile docker
+
+$ nextflow run build_nf/main.nf -stub-run -profile docker   # dry-run the whole chain
+[PROCESS 3d/a62225] NFCORE_SRA (nf-core/fetchngs@1.12.0)
+[PROCESS 8d/a01b88] NFCORE_RNA (nf-core/rnaseq@3.14.0)
+[SUCCESS] completed=2 failed=0 cached=0
+
+$ nextflow run build_nf/main.nf -profile docker             # for real (needs data + Docker)
 ```
 
 Nothing about `rnaseq`'s inputs is hardcoded in nf-chain. The pipeline's own
@@ -153,6 +159,42 @@ Literal params go into `build_nf/params/<step>.json`; chained inputs are passed
 on the command line, because only Nextflow knows their staged paths at runtime.
 An artifact consumed downstream is a required output; the rest are `optional`.
 
+Every process also gets a `stub:` block that `touch`es its declared outputs, so
+`nextflow run build_nf/main.nf -stub-run` executes the entire DAG in seconds
+without running a single real pipeline. That's the fast way to check a chain is
+wired correctly — if a downstream input isn't actually produced upstream, the
+stub run fails at that wire. `-profile docker` on the driver selects the profile
+handed to the nested runs (`-profile singularity`, `conda`, `podman`, `test`
+work too); the tiny driver processes always run locally.
+
+## Does the chaining actually work?
+
+Yes — and you can watch the data cross the wire. After a stub run of the example:
+
+```console
+$ ls build_nf/results/
+sra/samplesheet/samplesheet.csv          # produced by fetchngs
+rna/star_salmon/salmon.merged.gene_counts.tsv   # produced by rnaseq
+
+# Nextflow staged fetchngs' samplesheet as rnaseq's input:
+$ ls -l build_nf/work/<rna-task>/
+samplesheet.csv -> .../work/<sra-task>/sra/samplesheet/samplesheet.csv
+```
+
+It is not hardcoded to one pair. `fetchngs → sarek` (variant calling) chains the
+same way — `sarek(input=sra.samplesheet)` — and stub-runs to `completed=2`.
+
+**What "anything" means, precisely.** All 152 nf-core pipelines can be imported,
+resolved, pinned, and turned into stubs — that half is fully general, because
+it's read from each pipeline's schema. Chaining has one requirement: the
+*producer* needs an entry in the `EMITS` table (`src/nfchain/contracts.py`),
+which currently covers `fetchngs`, `rnaseq`, `sarek` and `atacseq`. A pipeline
+with no `EMITS` entry is fine as the **last** step (nothing reads its output),
+but to feed a downstream step you add its published paths there — a few lines.
+Auto-wiring fires only for a consumer's *required* samplesheet; optional inputs
+(like sarek's) are wired explicitly. Everything else about the pipeline is still
+discovered live.
+
 ## Limitations, honestly
 
 - **Nested `nextflow run`.** Nextflow's DSL2 `include` pulls in modules and
@@ -177,9 +219,13 @@ An artifact consumed downstream is a required output; the rest are `optional`.
 ## Development
 
 ```console
-.venv/bin/python -m pytest        # 52 tests, no network
+.venv/bin/python -m pytest        # 61 tests, no network
 ./scripts/vendor_nextflow.sh      # shallow-clone Nextflow into vendor/ for reference
 ```
+
+The generated project was launched end-to-end in `-stub-run` mode against a real
+Nextflow (26.04) to confirm the DSL compiles, the workflow DAG builds, and the
+upstream samplesheet is genuinely staged as the downstream pipeline's input.
 
 Tests stub the registry and every schema, so the suite is offline and fast. The
 fixtures in `tests/conftest.py` mirror the real shape of `pipelines.json` and

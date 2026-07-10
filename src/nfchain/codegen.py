@@ -71,7 +71,35 @@ def _process(step: ResolvedStep, consumed: set[str]) -> str:
     """
 {body}
     """
+
+    stub:
+    """
+{_stub_body(step)}
+    """
 }}'''
+
+
+def _stub_path(step_var: str, art_path: str) -> str:
+    """Turn a declared output glob into one concrete path a stub can create."""
+    concrete = art_path.replace("**", "stub").replace("*", "stub")
+    return f"{step_var}/{concrete}"
+
+
+def _stub_body(step: ResolvedStep) -> str:
+    """A `-stub-run` block that materialises every declared output.
+
+    This is what makes a chain testable without running a single real pipeline:
+    `nextflow run ... -stub-run` executes the whole DAG in seconds, and any
+    broken wire fails loudly because a consumed output won't exist.
+    """
+    files = [_stub_path(step.var, art.path) for art in _emitted(step)]
+    lines = [f"mkdir -p {step.var}"]
+    dirs = sorted({f.rsplit("/", 1)[0] for f in files if "/" in f})
+    for d in dirs:
+        lines.append(f"mkdir -p {d}")
+    for f in files:
+        lines.append(f"touch {f}")
+    return "\n".join(f"    {ln}" for ln in lines)
 
 
 def _emitted(step: ResolvedStep):
@@ -120,7 +148,7 @@ def _config(chain: Chain) -> str:
 
 params {{
     outdir     = 'results'
-    // Forwarded to every nested pipeline as `-profile`.
+    // Forwarded to every nested pipeline as `-profile`; a profile below sets it.
     nf_profile = 'docker'
 }}
 
@@ -132,9 +160,15 @@ process {{
     memory   = '2 GB'
 }}
 
-// Nested runs inherit the parent's Nextflow installation from PATH.
-env {{
-    NXF_ANSI_LOG = 'false'
+// `-profile X` on the driver selects the profile handed to the *nested* runs.
+// The driver itself stays local — it only shells out to `nextflow run`.
+profiles {{
+    docker      {{ params.nf_profile = 'docker' }}
+    singularity {{ params.nf_profile = 'singularity' }}
+    conda       {{ params.nf_profile = 'conda' }}
+    podman      {{ params.nf_profile = 'podman' }}
+    test        {{ params.nf_profile = 'test,docker' }}
+    standard    {{ params.nf_profile = 'docker' }}
 }}
 """
 
