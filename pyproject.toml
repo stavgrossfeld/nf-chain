@@ -1,0 +1,20 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "nf-chain"
+version = "0.1.0"
+description = "Chain nf-core pipelines together with a simple import syntax."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+nfchain = "nfchain.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/nfchain"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

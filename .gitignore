@@ -1,0 +1,19 @@
+__pycache__/
+*.pyc
+.venv/
+build/
+dist/
+*.egg-info/
+.mypy_cache/
+.pytest_cache/
+.vscode/settings.json
+
+# nf-chain generated + cached artifacts (all of .nfchain is tool output)
+.nfchain/
+build_nf/
+work/
+results/
+.nextflow*
+
+# vendored upstream source, cloned by scripts/vendor_nextflow.sh
+vendor/
