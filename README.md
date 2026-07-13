@@ -38,6 +38,14 @@ git clone <this repo> && cd nf-chain
 python3 -m venv .venv && .venv/bin/pip install -e .
 ```
 
+This installs two identical console commands, `nf-chain` and `nfchain`. To call
+`nf-chain` from anywhere, either activate the venv (`source .venv/bin/activate`)
+or add a shell alias to the standalone venv binary:
+
+```console
+echo 'alias nf-chain="'"$PWD"'/.venv/bin/nf-chain"' >> ~/.zshrc
+```
+
 Only the standard library is needed. Running the generated workflow additionally
 needs [Nextflow](https://nextflow.io) (and Java) on `PATH`.
 

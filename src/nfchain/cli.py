@@ -177,7 +177,9 @@ def cmd_show(args) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    ap = argparse.ArgumentParser(prog="nfchain", description=__doc__)
+    # prog defaults to the basename of argv[0], so `nf-chain --help` and
+    # `nfchain --help` each show the name that was actually invoked.
+    ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--refresh", action="store_true", help="bypass the schema cache")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
