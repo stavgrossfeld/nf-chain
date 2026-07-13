@@ -38,12 +38,20 @@ git clone <this repo> && cd nf-chain
 python3 -m venv .venv && .venv/bin/pip install -e .
 ```
 
-This installs two identical console commands, `nf-chain` and `nfchain`. To call
-`nf-chain` from anywhere, either activate the venv (`source .venv/bin/activate`)
-or add a shell alias to the standalone venv binary:
+This installs two identical console commands, `nf-chain` and `nfchain` (into the
+venv). To get a real `nf-chain` on your PATH — better than a shell alias, since
+it works in every shell and in scripts — use the Makefile:
 
 ```console
-echo 'alias nf-chain="'"$PWD"'/.venv/bin/nf-chain"' >> ~/.zshrc
+make install     # symlinks ~/.local/bin/nf-chain -> .venv/bin/nf-chain
+make uninstall   # removes it
+```
+
+`make` on its own lists every target (`test`, `explain`, `build`, `run`, …), so
+you can also drive the tool without installing it at all:
+
+```console
+make run FLOW=examples/sra_to_rnaseq.flow PROFILE=docker
 ```
 
 Only the standard library is needed. Running the generated workflow additionally
