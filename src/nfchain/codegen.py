@@ -70,7 +70,12 @@ def _process(step: ResolvedStep, consumed: set[str]) -> str:
     # helper 2024-era nf-core releases ship in nextflow.config; `v1` accepts it.
     # Set on the launch env because NXF_SYNTAX_PARSER is read at config-parse
     # time — works with any `nextflow` on PATH, Homebrew's fixed build included.
-    body = f"    export NXF_SYNTAX_PARSER=${{params.nf_syntax_parser}}\n    {run}"
+    # The `?: 'v1'` fallback means a missing param renders `v1`, never `null`
+    # (an empty value is rejected with "Invalid NXF_SYNTAX_PARSER setting").
+    body = (
+        f"    export NXF_SYNTAX_PARSER=${{params.nf_syntax_parser ?: '{DEFAULT_SYNTAX_PARSER}'}}"
+        f"\n    {run}"
+    )
     return f'''process {step.process} {{
     tag "{ref.full_name}@{ref.revision}"
     publishDir params.outdir, mode: 'copy'

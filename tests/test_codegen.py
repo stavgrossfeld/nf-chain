@@ -55,10 +55,11 @@ def test_nextflow_options_precede_pipeline_params(chain):
 
 def test_each_nested_run_selects_the_config_parser(chain):
     main = codegen.render_main(chain)
-    # export must precede the nested `nextflow run` in every process.
+    # export must precede the nested `nextflow run` in every process, and fall
+    # back to a valid parser so it can never render `null`.
     for proc in ("NFCORE_SRA", "NFCORE_RNA"):
         script = main.split(f"process {proc} {{")[1].split("stub:")[0]
-        assert "export NXF_SYNTAX_PARSER=${params.nf_syntax_parser}" in script
+        assert "export NXF_SYNTAX_PARSER=${params.nf_syntax_parser ?: 'v1'}" in script
         assert script.index("export NXF_SYNTAX_PARSER") < script.index("nextflow run")
 
 
