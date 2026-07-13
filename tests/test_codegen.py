@@ -53,6 +53,20 @@ def test_nextflow_options_precede_pipeline_params(chain):
     assert script.index("-work-dir ./work") < script.index("--input ${in_input}")
 
 
+def test_each_nested_run_pins_the_nextflow_version(chain):
+    main = codegen.render_main(chain)
+    # export must precede the nested `nextflow run` in every process.
+    for proc in ("NFCORE_SRA", "NFCORE_RNA"):
+        script = main.split(f"process {proc} {{")[1].split("stub:")[0]
+        assert "export NXF_VER=${params.nf_version}" in script
+        assert script.index("export NXF_VER") < script.index("nextflow run")
+
+
+def test_config_defaults_a_compatible_nextflow_version(chain):
+    cfg = codegen._config(chain)
+    assert f"nf_version = '{codegen.DEFAULT_NF_VERSION}'" in cfg
+
+
 def test_consumed_artifact_is_mandatory_others_optional(chain):
     main = codegen.render_main(chain)
     # rnaseq consumes sra.samplesheet, so it must exist...

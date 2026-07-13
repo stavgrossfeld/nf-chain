@@ -195,6 +195,38 @@ Auto-wiring fires only for a consumer's *required* samplesheet; optional inputs
 (like sarek's) are wired explicitly. Everything else about the pipeline is still
 discovered live.
 
+## Troubleshooting a real run
+
+**`Unexpected input: '('` / `def check_max(obj, type)` — config parsing failed.**
+Your Nextflow is *newer* than the pipeline release. 2024-era nf-core pipelines
+(e.g. fetchngs 1.12.0) put a `def check_max(...)` helper in `nextflow.config` and
+cap only the *minimum* Nextflow version. Nextflow 25+'s strict config parser
+rejects that helper. nf-chain pins each nested run to a compatible Nextflow via
+`NXF_VER` (default `24.10.5`, in the generated config); override per run:
+
+```console
+nextflow run build_nf/main.nf -profile docker --nf_version 24.10.5
+```
+
+This only helps if your `nextflow` launcher honours `NXF_VER`. The **official
+installer** (`curl -s https://get.nextflow.io | bash`) and the conda package do;
+**Homebrew's `nextflow` is a fixed build that ignores it** — `brew install`
+gives you exactly one version. If you installed via brew, use the official
+launcher for real runs (stub runs are fine on any version).
+
+**`Unknown configuration profile: 'docker'`.** The generated `nextflow.config`
+defines the profiles, and Nextflow reads it from the script's directory — so run
+the generated `main.nf`, not a hand-written one, and rebuild after upgrading
+nf-chain (`nfchain build`) so the config includes the profile block.
+
+**Can I use `-profile test`?** Yes, but know what it does: nf-core's `test`
+profile makes each pipeline run on *its own* bundled mini-dataset, which means
+each nested run ignores the wiring and runs standalone — fetchngs downloads its
+test accessions, rnaseq uses its test samplesheet, and they don't feed each
+other. It's a good smoke test that each pipeline runs in your environment, not a
+test of the chain. For a connected run use `-profile docker` with real inputs;
+to exercise the wiring cheaply use `-stub-run`.
+
 ## Limitations, honestly
 
 - **Nested `nextflow run`.** Nextflow's DSL2 `include` pulls in modules and
