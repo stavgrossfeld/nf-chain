@@ -126,6 +126,34 @@ if you'd rather not see the squiggle. Flow files are **parsed, never executed**.
 Steps may only pass keyword arguments. Values are literals or an upstream
 output (`sra.samplesheet`). `rev="3.14.0"` pins that step.
 
+## Two ways to run a chain
+
+`nfchain build` writes both:
+
+- **`run.sh` (default, recommended)** — runs each pipeline as an ordinary
+  top-level `nextflow run`, in order, wiring each step's published output into
+  the next step's input. You see **every task of every pipeline live**, exactly
+  like running nf-core by hand. `nfchain run` uses this.
+- **`main.nf` (nested DAG)** — one Nextflow driver process per pipeline, each
+  shelling out to a child `nextflow run`. Nextflow manages the graph, but the
+  child's tasks are hidden: you see one `NFCORE_SRA  0 of 1` line for the whole
+  duration of that pipeline, which looks like a hang during a long download. Use
+  `nfchain run --nested` (or run `main.nf` directly) if you want it.
+
+```console
+$ build_nf/run.sh docker
+==> step 1/2: nf-core/fetchngs@1.12.0
+[PROCESS 54/7bbde0] NFCORE_FETCHNGS:SRA:SRA_IDS_TO_RUNINFO (SRR6357070)
+[PROCESS 36/a87f25] NFCORE_FETCHNGS:SRA:SRA_FASTQ_FTP (SRX3453465_SRR6357070)
+...
+==> step 2/2: nf-core/rnaseq@3.14.0
+[PROCESS .. / ......] NFCORE_RNASEQ:RNASEQ:...
+```
+
+If you're stuck watching `main.nf` show `NFCORE_SRA  0 of 1` and nothing else,
+it is **not hung** — the nested pipeline is running; its task output is in
+`build_nf/work/<hash>/.command.log`. `run.sh` avoids that entirely.
+
 ## What gets generated
 
 `build_nf/main.nf` has one process per step, each shelling out to

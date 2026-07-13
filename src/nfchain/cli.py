@@ -83,7 +83,8 @@ def cmd_build(args) -> int:
     print(f"built {len(chain.steps)}-step chain → {args.outdir}/")
     for p in written:
         print(f"  {_rel(p, root)}")
-    print(f"\nrun it:  nextflow run {args.outdir}/main.nf -profile docker")
+    print(f"\nrun it (live per-task output):  {args.outdir}/run.sh docker")
+    print(f"or Nextflow-managed DAG:        nextflow run {args.outdir}/main.nf -profile docker")
     return 0
 
 
@@ -94,11 +95,16 @@ def cmd_run(args) -> int:
     if shutil.which("nextflow") is None:
         raise Abort(
             "nextflow is not on PATH — install it (https://nextflow.io) or run "
-            f"`nextflow run {args.outdir}/main.nf` on a machine that has it"
+            f"`{args.outdir}/run.sh` on a machine that has it"
         )
-    cmd = ["nextflow", "run", f"{args.outdir}/main.nf", "-profile", args.profile]
-    if args.resume:
-        cmd.append("-resume")
+    if args.nested:
+        # One driver process per pipeline; nested task output is hidden.
+        cmd = ["nextflow", "run", f"{args.outdir}/main.nf", "-profile", args.profile]
+        if args.resume:
+            cmd.append("-resume")
+    else:
+        # Sequential: each pipeline runs top-level, so every task streams live.
+        cmd = ["bash", f"{args.outdir}/run.sh", args.profile]
     print(f"\n$ {' '.join(cmd)}\n")
     return subprocess.call(cmd)
 
@@ -190,9 +196,14 @@ def build_parser() -> argparse.ArgumentParser:
         func=cmd_build
     )
 
-    run = with_flow(sub.add_parser("run", help="build, then run with nextflow"))
+    run = with_flow(sub.add_parser("run", help="build, then run (live per-task output)"))
     run.add_argument("--profile", default="docker")
     run.add_argument("-resume", "--resume", action="store_true")
+    run.add_argument(
+        "--nested",
+        action="store_true",
+        help="run the nested main.nf (Nextflow-managed DAG) instead of the sequential run.sh",
+    )
     run.set_defaults(func=cmd_run)
 
     watch = with_flow(sub.add_parser("watch", help="re-sync stubs on every save"))

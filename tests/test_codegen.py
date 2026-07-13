@@ -126,6 +126,47 @@ def test_stub_globs_become_concrete_paths(chain):
     assert stub_cmds and all("*" not in ln for ln in stub_cmds)
 
 
+def test_run_sh_runs_each_pipeline_top_level(chain):
+    sh = codegen.render_run_sh(chain)
+    # one top-level `nextflow run` per step — this is what makes tasks visible.
+    assert sh.count("nextflow run ") == len(chain.steps)
+    assert "nextflow run nf-core/fetchngs \\\n        -r 1.12.0" in sh
+    assert "nextflow run nf-core/rnaseq \\\n        -r 3.26.0" in sh
+
+
+def test_run_sh_wires_upstream_output_as_downstream_input(chain):
+    sh = codegen.render_run_sh(chain)
+    # rnaseq's --input is fetchngs' published samplesheet path.
+    assert '--input "$OUTDIR/sra/samplesheet/samplesheet.csv"' in sh
+    # fetchngs' --input is the accessions file.
+    assert '--input "$HERE/params/sra.accessions.csv"' in sh
+
+
+def test_run_sh_sets_legacy_parser_and_is_ordered(chain):
+    sh = codegen.render_run_sh(chain)
+    assert 'export NXF_SYNTAX_PARSER="${NXF_SYNTAX_PARSER:-v1}"' in sh
+    # fetchngs (producer) must be invoked before rnaseq (consumer).
+    assert sh.index("nf-core/fetchngs") < sh.index("nf-core/rnaseq")
+
+
+def test_run_sh_runs_from_clean_dir_to_avoid_driver_config(chain):
+    # Running inside build_nf/ would auto-load the driver's nextflow.config and
+    # inject its params into each standalone pipeline (an invalid-params warning).
+    sh = codegen.render_run_sh(chain)
+    assert 'cd "$HERE/run"' in sh
+    assert sh.index('cd "$HERE/run"') < sh.index("nextflow run")
+
+
+def test_write_emits_run_sh_and_accessions(chain, root):
+    out = root / "build_nf"
+    written = codegen.write(chain, out)
+    run_sh = out / "run.sh"
+    assert run_sh in written
+    assert run_sh.stat().st_mode & 0o100  # executable
+    acc = out / "params" / "sra.accessions.csv"
+    assert acc.read_text().split() == ["SRR1", "SRR2"]
+
+
 def test_config_records_the_chain(chain):
     cfg = codegen._config(chain)
     assert "sra=nf-core/fetchngs@1.12.0" in cfg

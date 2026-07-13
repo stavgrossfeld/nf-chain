@@ -214,8 +214,67 @@ def render_main(chain: Chain) -> str:
     return "\n".join(parts)
 
 
+def accessions_filename(step: ResolvedStep) -> str:
+    return f"{step.var}.accessions.csv"
+
+
+def render_run_sh(chain: Chain) -> str:
+    """A sequential runner: each pipeline is a top-level `nextflow run`.
+
+    Unlike main.nf (which nests each pipeline inside a driver process and so
+    hides the nested tasks behind a single spinner), this runs the pipelines one
+    after another as ordinary runs — you see every task of every pipeline live,
+    exactly like running nf-core by hand. Outputs are wired by passing each
+    step's published path as the next step's input.
+    """
+    lines = [
+        "#!/usr/bin/env bash",
+        "# " + BANNER.lstrip("/ "),
+        "# Sequential chain runner — full live task output for every pipeline.",
+        "#   ./run.sh [profile]   (default: docker)",
+        "set -euo pipefail",
+        "",
+        'HERE="$(cd "$(dirname "$0")" && pwd)"',
+        'PROFILE="${1:-docker}"',
+        'OUTDIR="$HERE/results"',
+        "# Legacy config parser: accepts the check_max() in 2024-era nf-core configs.",
+        'export NXF_SYNTAX_PARSER="${NXF_SYNTAX_PARSER:-v1}"',
+        "",
+        "# Run from a clean dir so Nextflow does NOT auto-load the driver's",
+        "# nextflow.config (that config is for main.nf; loading it here would",
+        "# inject nf_profile/nf_syntax_parser as bogus params into each pipeline).",
+        'mkdir -p "$HERE/run" && cd "$HERE/run"',
+        "",
+    ]
+    for i, step in enumerate(chain.steps, 1):
+        ref = step.ref
+        inp = None
+        if step.accession_input is not None:
+            inp = f'"$HERE/params/{accessions_filename(step)}"'
+        else:
+            for wire in step.wires:
+                if wire.param == "input":
+                    inp = f'"$OUTDIR/{wire.source_step}/{wire.artifact.path}"'
+        cmd = [
+            "nextflow run " + ref.full_name,
+            "-r " + ref.revision,
+            '-profile "$PROFILE"',
+            f'-params-file "$HERE/params/{step.var}.json"',
+        ]
+        if inp is not None:
+            cmd.append(f"--input {inp}")
+        cmd.append(f'--outdir "$OUTDIR/{step.var}"')
+        cmd.append("-resume")
+        joined = " \\\n        ".join(cmd)
+        lines.append(f'echo "==> step {i}/{len(chain.steps)}: {ref.full_name}@{ref.revision}"')
+        lines.append(f"    {joined}")
+        lines.append("")
+    lines.append('echo "chain complete → $OUTDIR"')
+    return "\n".join(lines) + "\n"
+
+
 def write(chain: Chain, outdir: Path) -> list[Path]:
-    """Write main.nf, nextflow.config and params/*.json. Returns written paths."""
+    """Write main.nf, run.sh, nextflow.config and params/*. Returns written paths."""
     outdir.mkdir(parents=True, exist_ok=True)
     (outdir / "params").mkdir(exist_ok=True)
 
@@ -225,6 +284,11 @@ def write(chain: Chain, outdir: Path) -> list[Path]:
     main.write_text(render_main(chain))
     written.append(main)
 
+    run_sh = outdir / "run.sh"
+    run_sh.write_text(render_run_sh(chain))
+    run_sh.chmod(0o755)
+    written.append(run_sh)
+
     cfg = outdir / "nextflow.config"
     cfg.write_text(_config(chain))
     written.append(cfg)
@@ -233,5 +297,9 @@ def write(chain: Chain, outdir: Path) -> list[Path]:
         p = outdir / "params" / f"{step.var}.json"
         p.write_text(json.dumps(_params_file(step), indent=2) + "\n")
         written.append(p)
+        if step.accession_input is not None:
+            af = outdir / "params" / accessions_filename(step)
+            af.write_text("\n".join(step.accession_input) + "\n")
+            written.append(af)
 
     return written
