@@ -33,9 +33,21 @@ its enums allow.
 
 ## Install
 
+It's an ordinary, dependency-free Python package. Install it however you like:
+
+```console
+pip install nf-chain                      # once published to PyPI
+pip install git+https://github.com/stav/nf-chain     # straight from GitHub
+pip install .                             # from a clone (add -e for editable)
+make wheel && pip install dist/nf_chain-*.whl        # from a built wheel
+```
+
+Any of these exposes the `nf-chain` (and `nfchain`) command and lets you
+`import nfchain` as a library. For local development:
+
 ```console
 git clone <this repo> && cd nf-chain
-python3 -m venv .venv && .venv/bin/pip install -e .
+python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
 ```
 
 This installs two identical console commands, `nf-chain` and `nfchain` (into the
@@ -62,6 +74,7 @@ needs [Nextflow](https://nextflow.io) (and Java) on `PATH`.
 | | |
 |---|---|
 | `nfchain explain <flow>` | resolve the chain, show every wire and where it came from |
+| `nfchain dag <flow>` | draw the chain as a graph (`--format mermaid`\|`dot`) |
 | `nfchain sync <flow>` | fetch schemas → write editor stubs + JSON Schemas |
 | `nfchain build <flow>` | generate a runnable Nextflow project into `build_nf/` |
 | `nfchain run <flow>` | build, then `nextflow run` it |

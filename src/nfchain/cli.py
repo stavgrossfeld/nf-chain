@@ -9,7 +9,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import codegen, dsl, graph, registry, schema, stubgen
+from . import codegen, dag, dsl, graph, registry, schema, stubgen
 from .cache import FetchError
 
 BUILD_DIR = "build_nf"
@@ -72,6 +72,17 @@ def cmd_explain(args) -> int:
             tag = " (auto)" if key in step.auto_params else ""
             print(f"      {key} = {value!r}{tag}")
     print()
+    return 0
+
+
+def cmd_dag(args) -> int:
+    chain, root = _load(args.flow, args.refresh)
+    out = dag.render(chain, args.format)
+    if args.output:
+        Path(args.output).write_text(out)
+        print(f"wrote {args.format} dag → {args.output}")
+    else:
+        print(out, end="")
     return 0
 
 
@@ -194,6 +205,12 @@ def build_parser() -> argparse.ArgumentParser:
     with_flow(sub.add_parser("explain", help="show the resolved chain and wiring")).set_defaults(
         func=cmd_explain
     )
+
+    d = sub.add_parser("dag", help="draw the chain as a graph (mermaid/dot)")
+    d.add_argument("flow", type=Path, nargs="?", default=Path("flow.flow"))
+    d.add_argument("--format", choices=["mermaid", "dot"], default="mermaid")
+    d.add_argument("-o", "--output", help="write to a file instead of stdout")
+    d.set_defaults(func=cmd_dag)
     with_flow(sub.add_parser("build", help="generate the Nextflow project")).set_defaults(
         func=cmd_build
     )

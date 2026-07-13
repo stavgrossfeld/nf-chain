@@ -8,6 +8,7 @@ PREFIX  ?= $(HOME)/.local
 LINK    := $(PREFIX)/bin/nf-chain
 FLOW    ?= examples/sra_to_rnaseq.flow
 PROFILE ?= docker
+FORMAT  ?= mermaid
 
 .DEFAULT_GOAL := help
 
@@ -46,9 +47,17 @@ explain: $(BIN)
 sync: $(BIN)
 	@$(BIN) sync $(FLOW)
 
+## dag: draw the chain as a graph  (FLOW=... FORMAT=mermaid|dot)
+dag: $(BIN)
+	@$(BIN) dag $(FLOW) --format $(FORMAT)
+
 ## build: generate the Nextflow project  (FLOW=... )
 build: $(BIN)
 	@$(BIN) build $(FLOW)
+
+## wheel: build an sdist + wheel into dist/ (pip-installable anywhere)
+wheel: $(BIN)
+	@$(PIP) install -q build && $(PY) -m build
 
 ## run: build then run the chain, streaming every task  (FLOW=... PROFILE=docker)
 run: $(BIN)
@@ -60,4 +69,4 @@ clean:
 	@find . -name __pycache__ -type d -prune -exec rm -rf {} + 2>/dev/null || true
 	@echo "cleaned"
 
-.PHONY: help venv install uninstall test explain sync build run clean
+.PHONY: help venv install uninstall test explain sync dag build wheel run clean

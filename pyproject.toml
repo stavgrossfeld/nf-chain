@@ -8,7 +8,23 @@ version = "0.1.0"
 description = "Chain nf-core pipelines together with a simple import syntax."
 readme = "README.md"
 requires-python = ">=3.10"
+license = "MIT"
+keywords = ["nextflow", "nf-core", "bioinformatics", "pipeline", "workflow"]
 dependencies = []
+
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Environment :: Console",
+]
+
+[project.urls]
+Homepage = "https://github.com/stav/nf-chain"
+Repository = "https://github.com/stav/nf-chain"
+
+[project.optional-dependencies]
+dev = ["pytest", "build", "mypy"]
 
 [project.scripts]
 nf-chain = "nfchain.cli:main"
