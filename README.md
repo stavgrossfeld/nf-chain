@@ -100,12 +100,15 @@ NFCORE_FETCHNGS:SRA:SRA_IDS_TO_RUNINFO … SRA_TO_SAMPLESHEET …
 NFCORE_RNASEQ:RNASEQ:FASTQC … TRIMGALORE … PREPARE_GENOME:SALMON_INDEX …
 ```
 
-Two caveats, because they're real: `-stub-run` only fakes a module that ships a
+Two caveats, because they're real. `-stub-run` only fakes a module that ships a
 `stub:` block — coverage varies (demo 4/4, rnaseq 19/61, fetchngs 1/10), so
-un-stubbed modules run for real on the tiny test data. To keep that from
-downloading, nf-chain sets any schema-declared download-skip param it finds
-(e.g. fetchngs' `skip_fastq_download`). It uses each pipeline's own test data, so
-it's a task-graph preview, not your chain's data run.
+un-stubbed modules run for real on the pipeline's **test** data. "Light" means
+test-scale, **not zero**: nf-chain sets any schema-declared download-skip param
+it finds (fetchngs' `skip_fastq_download` → 0 bytes pulled), but a pipeline whose
+test inputs are FastQs and whose staging modules aren't stubbed (rnaseq) still
+stages those test FastQs — tens of MB, versus the multi-GB of a real chain run.
+It uses each pipeline's own test data, so it's a task-graph preview, not your
+chain's data run.
 
 For a chain-level wiring check instead, `nextflow run build_nf/main.nf -stub-run`
 shows the two chain steps instantly.
