@@ -79,6 +79,7 @@ needs [Nextflow](https://nextflow.io) (and Java) on `PATH`.
 | `nfchain dag <flow>` | draw the chain as a graph (`--format mermaid`\|`dot`) |
 | `nfchain sync <flow>` | fetch schemas → write editor stubs + JSON Schemas |
 | `nfchain build <flow>` | generate a runnable Nextflow project into `build_nf/` |
+| `nfchain preview <flow>` | deep stub — list every task of every pipeline, no downloads |
 | `nfchain run <flow>` | build, then `nextflow run` it |
 | `nfchain watch <flow>` | re-sync stubs on every save |
 | `nfchain ls [query]` | list the 150-odd nf-core pipelines |
@@ -194,6 +195,22 @@ Because `run.sh` launches each pipeline as its own top-level run, `-with-tower`
 gives you **one Seqera Platform run per pipeline** — properly monitored, with all
 tasks visible — instead of the nested driver that would hide them. The same works
 directly: `build_nf/run.sh docker -with-tower -with-report`.
+
+### Seeing every task without a data run
+
+`main.nf -stub-run` only shows the two chain-level processes: each pipeline is a
+single black-box process there, and its stub is a `touch`, so stub-run doesn't
+descend into it. To activate and *see* every individual task of every pipeline —
+FastQC, STAR_ALIGN, SRA_TO_SAMPLESHEET, … — use `preview`, which stub-runs each
+pipeline top-level with its own `test` profile:
+
+```console
+nf-chain preview examples/sra_to_rnaseq.flow
+```
+
+No downloads (it's `-stub-run`); it uses each pipeline's bundled test inputs, so
+it's a task-graph preview rather than a data run. A pipeline whose `test` profile
+has many samples (fetchngs) will list many tasks and take a minute or two.
 
 If you're stuck watching `main.nf` show `NFCORE_SRA  0 of 1` and nothing else,
 it is **not hung** — the nested pipeline is running; its task output is in

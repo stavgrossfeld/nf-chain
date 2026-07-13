@@ -184,6 +184,34 @@ def test_write_emits_run_sh_and_accessions(chain, root):
     assert acc.read_text().split() == ["SRR1", "SRR2"]
 
 
+def test_preview_stub_runs_each_pipeline_top_level(chain):
+    sh = codegen.render_preview_sh(chain)
+    # one top-level stub-run per pipeline, so every task activates and prints
+    assert sh.count("-stub-run") == len(chain.steps)
+    assert "nextflow run nf-core/fetchngs" in sh
+    assert "nextflow run nf-core/rnaseq" in sh
+
+
+def test_preview_uses_test_profile_and_no_chain_input(chain):
+    sh = codegen.render_preview_sh(chain)
+    assert 'PROFILE="${1:-test,docker}"' in sh
+    # a task preview uses each pipeline's own test data, not the chain wiring
+    assert "--input" not in sh
+
+
+def test_preview_tolerates_a_failing_pipeline(chain):
+    sh = codegen.render_preview_sh(chain)
+    # no `set -e`, and each run is `|| true`, so one failure doesn't halt preview
+    assert "set -e" not in sh
+    assert sh.count("|| true") == len(chain.steps)
+
+
+def test_write_emits_executable_preview(chain, root):
+    written = codegen.write(chain, root / "build_nf")
+    p = root / "build_nf" / "preview.sh"
+    assert p in written and (p.stat().st_mode & 0o100)
+
+
 def test_config_records_the_chain(chain):
     cfg = codegen._config(chain)
     assert "sra=nf-core/fetchngs@1.12.0" in cfg
