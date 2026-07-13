@@ -2,6 +2,8 @@
 
 Chain nf-core pipelines together with a simple import.
 
+> Internals and design rationale: [ARCHITECTURE.md](ARCHITECTURE.md).
+
 ```python
 # examples/sra_to_rnaseq.flow
 from nf-core import sratools
