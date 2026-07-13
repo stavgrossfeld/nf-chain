@@ -198,21 +198,24 @@ discovered live.
 ## Troubleshooting a real run
 
 **`Unexpected input: '('` / `def check_max(obj, type)` — config parsing failed.**
-Your Nextflow is *newer* than the pipeline release. 2024-era nf-core pipelines
-(e.g. fetchngs 1.12.0) put a `def check_max(...)` helper in `nextflow.config` and
-cap only the *minimum* Nextflow version. Nextflow 25+'s strict config parser
-rejects that helper. nf-chain pins each nested run to a compatible Nextflow via
-`NXF_VER` (default `24.10.5`, in the generated config); override per run:
+2024-era nf-core pipelines (e.g. fetchngs 1.12.0) put a `def check_max(...)`
+helper in `nextflow.config`, and cap only the *minimum* Nextflow version. A
+current Nextflow (25+) defaults to a strict config parser that rejects that
+helper. The fix is the **legacy parser, not an older Nextflow** — nf-chain
+exports `NXF_SYNTAX_PARSER=v1` before each nested run (the `nf_syntax_parser`
+param, default `v1`). It's read at config-parse time, so it works with any
+`nextflow` on `PATH`, Homebrew's fixed build included. Once every pipeline in
+the chain has dropped `check_max`, switch to the strict parser:
 
 ```console
-nextflow run build_nf/main.nf -profile docker --nf_version 24.10.5
+nextflow run build_nf/main.nf -profile docker --nf_syntax_parser v2
 ```
 
-This only helps if your `nextflow` launcher honours `NXF_VER`. The **official
-installer** (`curl -s https://get.nextflow.io | bash`) and the conda package do;
-**Homebrew's `nextflow` is a fixed build that ignores it** — `brew install`
-gives you exactly one version. If you installed via brew, use the official
-launcher for real runs (stub runs are fine on any version).
+Verified: with `v1`, fetchngs 1.12.0 runs its real tasks under Nextflow 26.04.
+
+**`Cannot connect to the Docker daemon`.** Start Docker Desktop / OrbStack. This
+is unrelated to nf-chain — the nested pipeline reached the point of launching a
+container, which means config parsing and wiring already succeeded.
 
 **`Unknown configuration profile: 'docker'`.** The generated `nextflow.config`
 defines the profiles, and Nextflow reads it from the script's directory — so run
