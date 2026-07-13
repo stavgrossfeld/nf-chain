@@ -79,10 +79,36 @@ needs [Nextflow](https://nextflow.io) (and Java) on `PATH`.
 | `nfchain dag <flow>` | draw the chain as a graph (`--format mermaid`\|`dot`) |
 | `nfchain sync <flow>` | fetch schemas → write editor stubs + JSON Schemas |
 | `nfchain build <flow>` | generate a runnable Nextflow project into `build_nf/` |
+| `nfchain stubs <flow>` | stub-run each pipeline to list its tasks, kept light |
 | `nfchain run <flow>` | build, then `nextflow run` it |
 | `nfchain watch <flow>` | re-sync stubs on every save |
 | `nfchain ls [query]` | list the 150-odd nf-core pipelines |
 | `nfchain show <pipeline>` | print a pipeline's params, straight from its schema |
+
+## Seeing each pipeline's tasks (without a data run)
+
+```console
+nf-chain stubs examples/sra_to_rnaseq.flow
+```
+
+Stub-runs each pipeline on its own with its `test` profile, listing every task:
+
+```
+==> step 1/2: nf-core/fetchngs@1.12.0  (light: --skip_fastq_download true)
+NFCORE_FETCHNGS:SRA:SRA_IDS_TO_RUNINFO … SRA_TO_SAMPLESHEET …
+==> step 2/2: nf-core/rnaseq@3.14.0
+NFCORE_RNASEQ:RNASEQ:FASTQC … TRIMGALORE … PREPARE_GENOME:SALMON_INDEX …
+```
+
+Two caveats, because they're real: `-stub-run` only fakes a module that ships a
+`stub:` block — coverage varies (demo 4/4, rnaseq 19/61, fetchngs 1/10), so
+un-stubbed modules run for real on the tiny test data. To keep that from
+downloading, nf-chain sets any schema-declared download-skip param it finds
+(e.g. fetchngs' `skip_fastq_download`). It uses each pipeline's own test data, so
+it's a task-graph preview, not your chain's data run.
+
+For a chain-level wiring check instead, `nextflow run build_nf/main.nf -stub-run`
+shows the two chain steps instantly.
 
 ## How the chaining works
 

@@ -129,6 +129,18 @@ def cmd_run(args) -> int:
     return subprocess.call(cmd)
 
 
+def cmd_stubs(args) -> int:
+    """Stub-run each pipeline on its own to list its individual tasks, kept light."""
+    rc = cmd_build(args)
+    if rc:
+        return rc
+    if shutil.which("nextflow") is None:
+        raise Abort(f"nextflow is not on PATH — run `{args.outdir}/stubs.sh` where it is")
+    cmd = ["bash", f"{args.outdir}/stubs.sh", args.profile]
+    print(f"\n$ {' '.join(cmd)}\n")
+    return subprocess.call(cmd)
+
+
 def cmd_watch(args) -> int:
     """Re-sync stubs whenever the flow file changes: 'on the fly' in VSCode."""
     last: float | None = None
@@ -234,6 +246,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     # Args after `--` are forwarded to nextflow (handled in main, see below).
     run.set_defaults(func=cmd_run)
+
+    st = with_flow(sub.add_parser("stubs", help="stub-run each pipeline to list its tasks (light)"))
+    st.add_argument("--profile", default="test,docker")
+    st.set_defaults(func=cmd_stubs)
 
     watch = with_flow(sub.add_parser("watch", help="re-sync stubs on every save"))
     watch.add_argument("--interval", type=float, default=1.0)

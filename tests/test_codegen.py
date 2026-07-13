@@ -184,6 +184,37 @@ def test_write_emits_run_sh_and_accessions(chain, root):
     assert acc.read_text().split() == ["SRR1", "SRR2"]
 
 
+def test_stubs_runs_each_pipeline_with_stub_run(chain):
+    sh = codegen.render_stubs_sh(chain)
+    assert sh.count("-stub-run") == len(chain.steps)
+    assert "nextflow run nf-core/fetchngs" in sh
+    assert "nextflow run nf-core/rnaseq" in sh
+    assert 'PROFILE="${1:-test,docker}"' in sh
+
+
+def test_stubs_sets_download_skip_when_schema_has_it(chain):
+    # fetchngs declares skip_fastq_download → set it so the stub stays light;
+    # rnaseq does not → it must not appear on the rnaseq line.
+    sh = codegen.render_stubs_sh(chain)
+    fetchngs_block = sh.split("nextflow run nf-core/fetchngs")[1].split("echo")[0]
+    rnaseq_block = sh.split("nextflow run nf-core/rnaseq")[1]
+    assert "--skip_fastq_download true" in fetchngs_block
+    assert "--skip_fastq_download" not in rnaseq_block
+
+
+def test_stubs_tolerates_failure_and_is_isolated(chain):
+    sh = codegen.render_stubs_sh(chain)
+    assert "set -e" not in sh  # one pipeline failing must not stop the rest
+    assert sh.count("|| true") == len(chain.steps)
+    assert 'cd "$HERE/stubs"' in sh
+
+
+def test_write_emits_executable_stubs_sh(chain, root):
+    written = codegen.write(chain, root / "build_nf")
+    p = root / "build_nf" / "stubs.sh"
+    assert p in written and (p.stat().st_mode & 0o100)
+
+
 def test_config_records_the_chain(chain):
     cfg = codegen._config(chain)
     assert "sra=nf-core/fetchngs@1.12.0" in cfg

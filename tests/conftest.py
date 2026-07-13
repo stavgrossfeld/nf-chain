@@ -62,6 +62,10 @@ FETCHNGS_SCHEMA = {
                 },
                 # A boolean enum: the schema spells it `false`, Python `False`.
                 "force_sratools_download": {"type": "boolean", "enum": [False]},
+                "skip_fastq_download": {
+                    "type": "boolean",
+                    "description": "Only download metadata, not the FastQ files",
+                },
                 "download_method": {
                     "type": "string",
                     "enum": ["aspera", "ftp", "sratools"],

@@ -285,6 +285,56 @@ def render_run_sh(chain: Chain) -> str:
     return "\n".join(lines) + "\n"
 
 
+# Boolean params that make a stub run light by skipping the heavy real work a
+# module would otherwise do (a `-stub-run` still executes modules that lack a
+# stub: block). Set when the pipeline's schema actually declares them.
+STUB_LIGHTENERS = ("skip_fastq_download",)
+
+
+def render_stubs_sh(chain: Chain) -> str:
+    """Stub-run each pipeline on its own to list its individual tasks.
+
+    `-stub-run` replaces a process with its `stub:` block *only if it has one*;
+    modules without a stub run for real. To keep that from downloading, we also
+    set any download-skipping param the pipeline's schema declares (e.g.
+    fetchngs' `skip_fastq_download`). It uses each pipeline's own `test` data, so
+    it's a task-graph preview, not a data run.
+    """
+    lines = [
+        "#!/usr/bin/env bash",
+        "# " + BANNER.lstrip("/ "),
+        "# Per-pipeline stub run — list each pipeline's tasks, kept light.",
+        "#   ./stubs.sh [profile]   (default: test,docker)",
+        "set -uo pipefail",  # no -e: one pipeline erroring must not stop the rest
+        "",
+        'HERE="$(cd "$(dirname "$0")" && pwd)"',
+        'PROFILE="${1:-test,docker}"',
+        'export NXF_SYNTAX_PARSER="${NXF_SYNTAX_PARSER:-v1}"',
+        'mkdir -p "$HERE/stubs" && cd "$HERE/stubs"',
+        "",
+    ]
+    for i, step in enumerate(chain.steps, 1):
+        ref = step.ref
+        light = [p for p in STUB_LIGHTENERS if p in step.sch.params]
+        cmd = [
+            "nextflow run " + ref.full_name,
+            "-r " + ref.revision,
+            '-profile "$PROFILE"',
+            "-stub-run",
+            f'--outdir "stub_{step.var}"',
+        ]
+        for p in light:
+            cmd.append(f"--{p} true")
+        note = f"  (light: --{' --'.join(light)} true)" if light else ""
+        lines.append(
+            f'echo "==> step {i}/{len(chain.steps)}: {ref.full_name}@{ref.revision}{note}"'
+        )
+        lines.append("    " + " \\\n        ".join(cmd) + " || true")
+        lines.append("")
+    lines.append('echo "stub preview complete"')
+    return "\n".join(lines) + "\n"
+
+
 def write(chain: Chain, outdir: Path) -> list[Path]:
     """Write main.nf, run.sh, nextflow.config and params/*. Returns written paths."""
     outdir.mkdir(parents=True, exist_ok=True)
@@ -300,6 +350,11 @@ def write(chain: Chain, outdir: Path) -> list[Path]:
     run_sh.write_text(render_run_sh(chain))
     run_sh.chmod(0o755)
     written.append(run_sh)
+
+    stubs_sh = outdir / "stubs.sh"
+    stubs_sh.write_text(render_stubs_sh(chain))
+    stubs_sh.chmod(0o755)
+    written.append(stubs_sh)
 
     cfg = outdir / "nextflow.config"
     cfg.write_text(_config(chain))
