@@ -285,49 +285,8 @@ def render_run_sh(chain: Chain) -> str:
     return "\n".join(lines) + "\n"
 
 
-def render_preview_sh(chain: Chain) -> str:
-    """A deep stub: stub-run each pipeline top-level to list all its tasks.
-
-    Unlike `main.nf -stub-run` (which stubs the two driver processes and never
-    descends into the pipelines) this runs each nf-core pipeline with its own
-    `-profile test -stub-run`, so every individual task activates and prints —
-    fast, no downloads. It uses each pipeline's bundled test inputs (not the
-    chain wiring), so it's a task-graph preview, not a data run.
-    """
-    lines = [
-        "#!/usr/bin/env bash",
-        "# " + BANNER.lstrip("/ "),
-        "# Deep stub — every task of every pipeline, no downloads.",
-        "#   ./preview.sh [profile]   (default: test,docker)",
-        # No `-e`: one pipeline erroring must not stop previewing the rest.
-        "set -uo pipefail",
-        "",
-        'HERE="$(cd "$(dirname "$0")" && pwd)"',
-        'PROFILE="${1:-test,docker}"',
-        'export NXF_SYNTAX_PARSER="${NXF_SYNTAX_PARSER:-v1}"',
-        'mkdir -p "$HERE/preview" && cd "$HERE/preview"',
-        "",
-    ]
-    for i, step in enumerate(chain.steps, 1):
-        ref = step.ref
-        cmd = " \\\n        ".join(
-            [
-                "nextflow run " + ref.full_name,
-                "-r " + ref.revision,
-                '-profile "$PROFILE"',
-                "-stub-run",
-                f'--outdir "prev_{step.var}"',
-            ]
-        )
-        lines.append(f'echo "==> step {i}/{len(chain.steps)}: {ref.full_name}@{ref.revision} (task preview)"')
-        lines.append(f"    {cmd} || true")
-        lines.append("")
-    lines.append('echo "preview complete"')
-    return "\n".join(lines) + "\n"
-
-
 def write(chain: Chain, outdir: Path) -> list[Path]:
-    """Write main.nf, run.sh, preview.sh, nextflow.config, params/*."""
+    """Write main.nf, run.sh, nextflow.config and params/*. Returns written paths."""
     outdir.mkdir(parents=True, exist_ok=True)
     (outdir / "params").mkdir(exist_ok=True)
 
@@ -341,11 +300,6 @@ def write(chain: Chain, outdir: Path) -> list[Path]:
     run_sh.write_text(render_run_sh(chain))
     run_sh.chmod(0o755)
     written.append(run_sh)
-
-    preview_sh = outdir / "preview.sh"
-    preview_sh.write_text(render_preview_sh(chain))
-    preview_sh.chmod(0o755)
-    written.append(preview_sh)
 
     cfg = outdir / "nextflow.config"
     cfg.write_text(_config(chain))
