@@ -1,0 +1,15 @@
+"""Smallest, fastest real run — no SRA download.
+
+nf-core/demo is a minimal pipeline (FastQC + seqtk trim + MultiQC) on a tiny
+hosted test dataset, so it finishes in a couple of minutes — good for checking
+your Docker/Nextflow setup end to end without waiting on fetchngs.
+
+    nf-chain run examples/demo.flow --profile docker
+"""
+
+from nf-core import demo
+
+# A remote samplesheet of tiny test FastQs (served from GitHub, not SRA).
+qc = demo(
+    input="https://raw.githubusercontent.com/nf-core/test-datasets/viralrecon/samplesheet/samplesheet_test_illumina_amplicon.csv",
+)

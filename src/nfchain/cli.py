@@ -111,6 +111,11 @@ def cmd_run(args) -> int:
     # Args after `--` are forwarded to the nextflow run(s):
     # e.g. `nf-chain run flow --profile docker -- -with-tower`.
     extra = args.nf_extra
+    if any(a in ("-profile", "--profile") for a in extra):
+        raise Abort(
+            "set the profile with nf-chain's `--profile ...` before `--`, "
+            "not as a forwarded flag"
+        )
     if args.nested:
         # One driver process per pipeline; nested task output is hidden.
         cmd = ["nextflow", "run", f"{args.outdir}/main.nf", "-profile", args.profile]
