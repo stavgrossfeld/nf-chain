@@ -79,6 +79,10 @@ def _process(step: ResolvedStep, consumed: set[str]) -> str:
     return f'''process {step.process} {{
     tag "{ref.full_name}@{ref.revision}"
     publishDir params.outdir, mode: 'copy'
+    // Surface the nested pipeline's own task log (some Nextflow console
+    // renderers only flush it on completion, so for guaranteed live per-task
+    // output prefer run.sh). Without this the step is a silent "0 of 1" spinner.
+    debug true
 
     input:
 {chr(10).join(inputs)}

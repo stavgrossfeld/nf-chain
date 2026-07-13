@@ -152,7 +152,13 @@ $ build_nf/run.sh docker
 
 If you're stuck watching `main.nf` show `NFCORE_SRA  0 of 1` and nothing else,
 it is **not hung** — the nested pipeline is running; its task output is in
-`build_nf/work/<hash>/.command.log`. `run.sh` avoids that entirely.
+`build_nf/work/<hash>/.command.out`. The generated processes set `debug true` to
+echo that log, but some Nextflow console renderers only flush it on completion,
+so `run.sh` (or `nfchain run`) is the reliable way to watch tasks live.
+
+**Don't run `nextflow run main.nf` when you want to watch progress** — that's the
+nested driver, and it shows one line per pipeline by construction. Use
+`./run.sh <profile>` or `nfchain run`.
 
 ## What gets generated
 

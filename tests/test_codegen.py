@@ -104,6 +104,13 @@ def test_write_emits_project_files(chain, root):
     assert "input" not in rna_params
 
 
+def test_every_process_streams_nested_output(chain):
+    # `debug true` echoes the nested pipeline's stdout live, so main.nf doesn't
+    # look hung while a child pipeline runs.
+    main = codegen.render_main(chain)
+    assert main.count("debug true") == len(chain.steps)
+
+
 def test_every_process_has_a_stub_block(chain):
     main = codegen.render_main(chain)
     assert main.count("stub:") == len(chain.steps)
