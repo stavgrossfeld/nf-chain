@@ -181,6 +181,20 @@ $ build_nf/run.sh docker
 [PROCESS .. / ......] NFCORE_RNASEQ:RNASEQ:...
 ```
 
+### Forwarding Nextflow flags (Seqera Platform / Tower, reports, etc.)
+
+Anything after `--` is passed straight to each `nextflow run`:
+
+```console
+export TOWER_ACCESS_TOKEN=...    # from Seqera Platform → Access tokens
+nf-chain run examples/sra_to_rnaseq.flow --profile docker -- -with-tower
+```
+
+Because `run.sh` launches each pipeline as its own top-level run, `-with-tower`
+gives you **one Seqera Platform run per pipeline** — properly monitored, with all
+tasks visible — instead of the nested driver that would hide them. The same works
+directly: `build_nf/run.sh docker -with-tower -with-report`.
+
 If you're stuck watching `main.nf` show `NFCORE_SRA  0 of 1` and nothing else,
 it is **not hung** — the nested pipeline is running; its task output is in
 `build_nf/work/<hash>/.command.out`. The generated processes set `debug true` to

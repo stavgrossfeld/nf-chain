@@ -235,11 +235,17 @@ def render_run_sh(chain: Chain) -> str:
         "#!/usr/bin/env bash",
         "# " + BANNER.lstrip("/ "),
         "# Sequential chain runner — full live task output for every pipeline.",
-        "#   ./run.sh [profile]   (default: docker)",
+        "#   ./run.sh [profile] [extra nextflow args...]",
+        "# e.g. ./run.sh docker -with-tower       (one Seqera run per pipeline;",
+        "#      needs TOWER_ACCESS_TOKEN in the environment)",
         "set -euo pipefail",
         "",
         'HERE="$(cd "$(dirname "$0")" && pwd)"',
         'PROFILE="${1:-docker}"',
+        "shift || true",
+        "# Args after the profile are forwarded verbatim to each pipeline launch",
+        "# (e.g. -with-tower, -with-report, -resume, -c my.config).",
+        'EXTRA=("$@")',
         'OUTDIR="$HERE/results"',
         "# Legacy config parser: accepts the check_max() in 2024-era nf-core configs.",
         'export NXF_SYNTAX_PARSER="${NXF_SYNTAX_PARSER:-v1}"',
@@ -269,6 +275,8 @@ def render_run_sh(chain: Chain) -> str:
             cmd.append(f"--input {inp}")
         cmd.append(f'--outdir "$OUTDIR/{step.var}"')
         cmd.append("-resume")
+        # Safe even when EXTRA is empty under `set -u` on bash 3.2 (macOS).
+        cmd.append('"${EXTRA[@]+"${EXTRA[@]}"}"')
         joined = " \\\n        ".join(cmd)
         lines.append(f'echo "==> step {i}/{len(chain.steps)}: {ref.full_name}@{ref.revision}"')
         lines.append(f"    {joined}")

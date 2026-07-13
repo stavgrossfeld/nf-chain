@@ -108,14 +108,18 @@ def cmd_run(args) -> int:
             "nextflow is not on PATH — install it (https://nextflow.io) or run "
             f"`{args.outdir}/run.sh` on a machine that has it"
         )
+    # Args after `--` are forwarded to the nextflow run(s):
+    # e.g. `nf-chain run flow --profile docker -- -with-tower`.
+    extra = args.nf_extra
     if args.nested:
         # One driver process per pipeline; nested task output is hidden.
         cmd = ["nextflow", "run", f"{args.outdir}/main.nf", "-profile", args.profile]
         if args.resume:
             cmd.append("-resume")
+        cmd += extra
     else:
         # Sequential: each pipeline runs top-level, so every task streams live.
-        cmd = ["bash", f"{args.outdir}/run.sh", args.profile]
+        cmd = ["bash", f"{args.outdir}/run.sh", args.profile, *extra]
     print(f"\n$ {' '.join(cmd)}\n")
     return subprocess.call(cmd)
 
@@ -223,6 +227,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="run the nested main.nf (Nextflow-managed DAG) instead of the sequential run.sh",
     )
+    # Args after `--` are forwarded to nextflow (handled in main, see below).
     run.set_defaults(func=cmd_run)
 
     watch = with_flow(sub.add_parser("watch", help="re-sync stubs on every save"))
@@ -243,7 +248,18 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    if argv is None:
+        argv = sys.argv[1:]
+    # Split off a `--` passthrough before argparse, so forwarded flags like
+    # `-with-tower` aren't mistaken for nf-chain options. Everything to the left
+    # is parsed normally; everything to the right goes to the nextflow run(s).
+    passthrough: list[str] = []
+    if "--" in argv:
+        i = argv.index("--")
+        argv, passthrough = argv[:i], argv[i + 1 :]
+
     args = build_parser().parse_args(argv)
+    args.nf_extra = passthrough
     try:
         return args.func(args)
     except (Abort, dsl.DslError, graph.ChainError, registry.UnknownPipeline, FetchError) as e:

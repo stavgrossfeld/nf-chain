@@ -156,12 +156,22 @@ def test_run_sh_sets_legacy_parser_and_is_ordered(chain):
     assert sh.index("nf-core/fetchngs") < sh.index("nf-core/rnaseq")
 
 
+def test_run_sh_forwards_extra_nextflow_args(chain):
+    sh = codegen.render_run_sh(chain)
+    # profile is $1; everything after is captured and forwarded to each run.
+    assert 'shift || true' in sh
+    assert 'EXTRA=("$@")' in sh
+    # empty-array-safe under `set -u` on bash 3.2, appended to every run
+    assert sh.count('"${EXTRA[@]+"${EXTRA[@]}"}"') == len(chain.steps)
+
+
 def test_run_sh_runs_from_clean_dir_to_avoid_driver_config(chain):
     # Running inside build_nf/ would auto-load the driver's nextflow.config and
     # inject its params into each standalone pipeline (an invalid-params warning).
     sh = codegen.render_run_sh(chain)
     assert 'cd "$HERE/run"' in sh
-    assert sh.index('cd "$HERE/run"') < sh.index("nextflow run")
+    # anchor on the indented command, not a comment that mentions nextflow
+    assert sh.index('cd "$HERE/run"') < sh.index("\n    nextflow run ")
 
 
 def test_write_emits_run_sh_and_accessions(chain, root):
