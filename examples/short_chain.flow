@@ -1,0 +1,16 @@
+"""The shortest real chain: fetch one accession, then QC it.
+
+fetchngs is the only nf-core pipeline that *produces* a samplesheet, so any chain
+starts with it. Pairing it with demo (the lightest consumer — FastQC + trim, no
+reference genome) makes the fastest end-to-end chain. `input` is auto-wired from
+fetchngs' samplesheet, so it isn't even written here.
+
+    nf-chain explain examples/short_chain.flow
+    nf-chain run     examples/short_chain.flow --profile docker
+"""
+
+from nf-core import fetchngs
+from nf-core import demo
+
+sra = fetchngs(ids="SRR6357070")   # one accession keeps the download small
+qc = demo()                        # input ← sra.samplesheet (auto)
