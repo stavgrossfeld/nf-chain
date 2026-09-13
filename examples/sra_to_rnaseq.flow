@@ -10,12 +10,15 @@ from nf-core import fetchngs
 from nf-core import rnaseq
 
 # fetchngs pulls raw FastQ + a samplesheet from SRA/ENA/GEO/DDBJ.
-sra = fetchngs(ids=["SRR6357070", "SRR6357071"])
+# These are the nf-core RAP1 yeast RNA-seq runs (~5 GB total); sratools is more
+# reliable than ENA FTP.
+sra = fetchngs(ids=["SRR6357070", "SRR6357071"], download_method="sratools")
 
-# `input` is wired to the samplesheet fetchngs publishes. Drop the argument
-# entirely and nf-chain infers the same edge — this spells it out.
+# `input` is wired to the samplesheet fetchngs publishes. genome is yeast
+# (R64-1-1) to MATCH the reads — GRCh38 would be wrong for these and needs ~30 GB
+# RAM. nf-chain caps resources to your machine automatically.
 rna = rnaseq(
     input=sra.samplesheet,
-    genome="GRCh38",
+    genome="R64-1-1",
     rev="3.14.0",
 )
