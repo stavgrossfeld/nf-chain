@@ -156,6 +156,17 @@ def test_run_sh_sets_legacy_parser_and_is_ordered(chain):
     assert sh.index("nf-core/fetchngs") < sh.index("nf-core/rnaseq")
 
 
+def test_run_sh_gives_each_step_a_linked_run_name(chain):
+    sh = codegen.render_run_sh(chain)
+    # a shared per-invocation tag, overridable, used to name every step's run
+    assert 'TAG="${NFCHAIN_TAG:-run_$(date' in sh
+    assert '-name "${TAG}_sra"' in sh
+    assert '-name "${TAG}_rna"' in sh
+    # a summary that links run names to their output locations
+    assert "run=${TAG}_sra   outdir=" in sh
+    assert "nextflow log" in sh
+
+
 def test_run_sh_forwards_extra_nextflow_args(chain):
     sh = codegen.render_run_sh(chain)
     # profile is $1; everything after is captured and forwarded to each run.

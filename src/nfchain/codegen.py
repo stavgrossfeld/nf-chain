@@ -286,8 +286,13 @@ def render_run_sh(chain: Chain) -> str:
         "# (e.g. -with-tower, -with-report, -resume, -c my.config).",
         'EXTRA=("$@")',
         'OUTDIR="$HERE/results"',
+        "# Shared run tag: every step of THIS invocation is named <TAG>_<step>, so",
+        "# the runs are linkable in `nextflow log` and the logs. Override with",
+        "# NFCHAIN_TAG=myexp ./run.sh ...  (must start with a letter).",
+        'TAG="${NFCHAIN_TAG:-run_$(date +%Y%m%d_%H%M%S)}"',
         "# Legacy config parser: accepts the check_max() in 2024-era nf-core configs.",
         'export NXF_SYNTAX_PARSER="${NXF_SYNTAX_PARSER:-v1}"',
+        'echo "run tag: $TAG   (steps: ' + ", ".join(f"{s.var}=${{TAG}}_{s.var}" for s in chain.steps) + ')"',
         "",
         "# Run from a clean dir so Nextflow does NOT auto-load the driver's",
         "# nextflow.config (that config is for main.nf; loading it here would",
@@ -307,6 +312,7 @@ def render_run_sh(chain: Chain) -> str:
         cmd = [
             "nextflow run " + ref.full_name,
             "-r " + ref.revision,
+            f'-name "${{TAG}}_{step.var}"',  # linkable run name, shared TAG per chain
             '-profile "$PROFILE"',
             '-c "$HERE/local.config"',  # cap resources to this machine
             f'-params-file "$HERE/params/{step.var}.json"',
@@ -321,7 +327,15 @@ def render_run_sh(chain: Chain) -> str:
         lines.append(f'echo "==> step {i}/{len(chain.steps)}: {ref.full_name}@{ref.revision}"')
         lines.append(f"    {joined}")
         lines.append("")
-    lines.append('echo "chain complete → $OUTDIR"')
+    # Linked summary: run names ↔ output locations, and how to see them together.
+    lines.append('echo ""')
+    lines.append('echo "chain complete (tag: $TAG)"')
+    for step in chain.steps:
+        lines.append(
+            f'echo "  {step.var:<8} run=${{TAG}}_{step.var}   outdir=$OUTDIR/{step.var}"'
+        )
+    lines.append('echo "  work dir: $HERE/run/work"')
+    lines.append('echo "  see all runs linked:  (cd \\"$HERE/run\\" && nextflow log)"')
     return "\n".join(lines) + "\n"
 
 
