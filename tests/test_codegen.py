@@ -215,6 +215,26 @@ def test_write_emits_executable_stubs_sh(chain, root):
     assert p in written and (p.stat().st_mode & 0o100)
 
 
+def test_local_config_caps_resources(chain, root):
+    written = codegen.write(chain, root / "build_nf")
+    lc = root / "build_nf" / "local.config"
+    assert lc in written
+    text = lc.read_text()
+    assert "resourceLimits" in text and "memory:" in text and "cpus:" in text
+
+
+def test_runners_apply_the_local_cap(chain):
+    # nf-core processes request more memory than a laptop has; both runners must
+    # pass the cap so the pipeline still schedules locally.
+    assert '-c "$HERE/local.config"' in codegen.render_run_sh(chain)
+    assert "-c ${projectDir}/local.config" in codegen.render_main(chain)
+
+
+def test_local_resources_are_sane():
+    cpus, mem = codegen._local_resources()
+    assert cpus >= 1 and mem >= 4
+
+
 def test_config_records_the_chain(chain):
     cfg = codegen._config(chain)
     assert "sra=nf-core/fetchngs@1.12.0" in cfg

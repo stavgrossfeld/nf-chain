@@ -12,5 +12,8 @@ fetchngs' samplesheet, so it isn't even written here.
 from nf-core import fetchngs
 from nf-core import demo
 
-sra = fetchngs(ids="SRR6357070")   # one accession keeps the download small
+# A tiny accession (~0.6 MB) + sratools download (NCBI HTTPS, more reliable than
+# ENA FTP) keeps this fast. nf-chain's generated local.config caps memory to your
+# machine so fetchngs' fasterq-dump (which asks for 36 GB) still schedules.
+sra = fetchngs(ids="SRR9984183", download_method="sratools")
 qc = demo()                        # input ← sra.samplesheet (auto)
