@@ -83,7 +83,7 @@ needs [Nextflow](https://nextflow.io) (and Java) on `PATH`.
 | `nfchain run <flow>` | build, then `nextflow run` it |
 | `nfchain watch <flow>` | re-sync stubs on every save |
 | `nfchain ls [query]` | list the 150-odd nf-core pipelines |
-| `nfchain show <pipeline>` | print a pipeline's params, straight from its schema |
+| `nfchain show <pipeline>` | print a pipeline's inputs (live schema) + outputs (curated) |
 
 ## Seeing each pipeline's tasks (without a data run)
 

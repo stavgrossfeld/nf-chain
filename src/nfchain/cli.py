@@ -188,20 +188,36 @@ def cmd_ls(args) -> int:
 
 
 def cmd_show(args) -> int:
+    from . import contracts
+
     root = Path.cwd()
     ref = registry.resolve(args.pipeline, root, revision=args.rev, refresh=args.refresh)
     sch = schema.load(ref, root, refresh=args.refresh)
-    print(f"\n\033[1m{ref.full_name}@{ref.revision}\033[0m\n{sch.description}\n")
+    print(f"\n\033[1m{ref.full_name}@{ref.revision}\033[0m\n{sch.description}")
+
+    # INPUTS / params — read live from the pipeline's nextflow_schema.json.
+    print("\n\033[1mINPUTS\033[0m (from nextflow_schema.json)")
     for p in sch.user_params():
         if not args.all and not p.required:
             continue
         mark = "\033[31m*\033[0m" if p.required else " "
         enum = f"  {{{'|'.join(p.enum)}}}" if p.enum else ""
-        print(f" {mark} {p.name:<28} {p.type}{enum}")
+        kind = f" \033[2m[{p.fmt}]\033[0m" if p.is_path else ""
+        print(f" {mark} {p.name:<26} {p.type}{enum}{kind}")
         if p.description:
             print(f"     {p.description[:90]}")
     if not args.all:
-        print("\n(required params only; pass --all for everything)")
+        print("   \033[2m(required only; --all for every param)\033[0m")
+
+    # OUTPUTS — not in any schema; from nf-chain's curated EMITS table.
+    arts = contracts.emits(ref.name)
+    print("\n\033[1mOUTPUTS\033[0m (curated — schemas don't describe outputs)")
+    if arts:
+        for a in arts:
+            print(f"   {a.name:<26} \033[2m[{a.kind}]\033[0m  outdir/{a.path}")
+    else:
+        print("   \033[2mnone curated yet — add to EMITS in contracts.py to chain from it\033[0m")
+    print()
     return 0
 
 
