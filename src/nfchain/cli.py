@@ -236,6 +236,19 @@ def cmd_run(args) -> int:
         if "-stub-run" not in extra:
             extra.append("-stub-run")
 
+    # First-class --tower:
+    if getattr(args, "tower", False):
+        if "TOWER_ACCESS_TOKEN" not in os.environ:
+            raise Abort(
+                "`--tower` requires the TOWER_ACCESS_TOKEN environment variable.\n"
+                "Get an access token in Seqera Platform (https://cloud.seqera.io -> Settings -> Access Tokens)\n"
+                "and export it: export TOWER_ACCESS_TOKEN='...'"
+            )
+        if "-with-tower" not in extra:
+            extra.append("-with-tower")
+    if getattr(args, "tower_workspace", None):
+        os.environ["TOWER_WORKSPACE_ID"] = str(args.tower_workspace)
+
     explicit_outdir = "-o" in sys.argv or "--outdir" in sys.argv
     use_temp = getattr(args, "temp", False) or (getattr(args, "stub_run", False) and not explicit_outdir)
 
@@ -248,6 +261,49 @@ def cmd_run(args) -> int:
             return _execute_run(args, extra)
 
     return _execute_run(args, extra)
+
+
+def cmd_tower(args) -> int:
+    """Launch the chain on Seqera Platform (cloud compute environment via tw CLI)."""
+    rc = cmd_build(args)
+    if rc:
+        return rc
+    outpath = Path(args.outdir)
+    if shutil.which("tw") is None:
+        raise Abort(
+            "The Seqera Platform CLI `tw` was not found on PATH.\n"
+            "Install it via Homebrew (`brew install seqeralabs/tap/tw`) or see https://seqera.io/cli"
+        )
+    env = dict(os.environ)
+    if "TOWER_ACCESS_TOKEN" not in env:
+        raise Abort(
+            "TOWER_ACCESS_TOKEN is not set. Get an access token from Seqera Platform\n"
+            "(https://cloud.seqera.io -> Settings -> Access Tokens) and export it:\n"
+            "  export TOWER_ACCESS_TOKEN='...'"
+        )
+    compute_env = getattr(args, "compute_env", None) or env.get("TW_COMPUTE_ENV")
+    if not compute_env:
+        raise Abort(
+            "No compute environment specified. Set TW_COMPUTE_ENV or pass --compute-env <name>."
+        )
+    env["TW_COMPUTE_ENV"] = compute_env
+
+    results = getattr(args, "results", None) or env.get("TW_OUTDIR")
+    if not results:
+        raise Abort(
+            "No cloud results path specified. Set TW_OUTDIR or pass --results <s3://bucket/path>."
+        )
+    env["TW_OUTDIR"] = results
+
+    if getattr(args, "workspace", None):
+        env["TW_WORKSPACE"] = str(args.workspace)
+
+    if shutil.which("bash") is None:
+        raise Abort("bash is required to run the Seqera launcher script.")
+
+    cmd = ["bash", f"{outpath}/run.tw.sh"]
+    print(f"\n$ {' '.join(cmd)}\n")
+    return subprocess.call(cmd, env=env)
 
 
 def cmd_stubs(args) -> int:
@@ -414,6 +470,7 @@ TYPICAL WORKFLOW:
     nf-chain preview pipeline.flow           # inspect full task list across all pipelines
     nf-chain build pipeline.flow             # compile into build_nf/ Nextflow project
     nf-chain run pipeline.flow --profile docker   # run with live streaming task output
+    nf-chain run pipeline.flow --tower       # run with live Seqera Platform monitoring
 """
 
 
@@ -511,6 +568,19 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="generate HTML execution report and timeline charts in the results directory",
     )
+    p_run.add_argument(
+        "--tower",
+        "--with-tower",
+        dest="tower",
+        action="store_true",
+        help="monitor pipeline execution on Seqera Platform (requires TOWER_ACCESS_TOKEN)",
+    )
+    p_run.add_argument(
+        "--tower-workspace",
+        dest="tower_workspace",
+        default=None,
+        help="Seqera Platform workspace ID for monitoring",
+    )
     p_run.add_argument("-resume", "--resume", action="store_true", help="resume execution from cache")
     p_run.add_argument(
         "--nested",
@@ -532,6 +602,34 @@ def build_parser() -> argparse.ArgumentParser:
         help="build and run completely on the fly in a temporary directory (no build_nf/ created)",
     )
     p_run.set_defaults(func=cmd_run)
+
+    p_tower = with_flow(
+        sub.add_parser(
+            "tower",
+            help="launch chain on Seqera Platform (cloud compute environment via tw CLI)",
+            description="Launch the multi-pipeline chain into Seqera Platform using S3 data wiring.",
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+        )
+    )
+    p_tower.add_argument(
+        "--compute-env",
+        dest="compute_env",
+        default=None,
+        help="Seqera compute environment name (or set TW_COMPUTE_ENV)",
+    )
+    p_tower.add_argument(
+        "--results",
+        dest="results",
+        default=None,
+        help="S3 results base path, e.g. s3://bucket/results (or set TW_OUTDIR)",
+    )
+    p_tower.add_argument(
+        "--workspace",
+        dest="workspace",
+        default=None,
+        help="optional Seqera workspace name or ID (or set TW_WORKSPACE)",
+    )
+    p_tower.set_defaults(func=cmd_tower)
 
     p_preview = with_flow(
         sub.add_parser(

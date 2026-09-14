@@ -233,3 +233,62 @@ def test_preview_subcommand_invokes_preview_sh(monkeypatch):
     assert captured["cmd"][2] == "test,docker"
 
 
+def test_run_tower_requires_token(monkeypatch, capsys):
+    monkeypatch.delenv("TOWER_ACCESS_TOKEN", raising=False)
+    monkeypatch.setattr(cli, "cmd_build", lambda args: 0)
+    monkeypatch.setattr(cli.shutil, "which", lambda cmd: "/usr/bin/nextflow")
+
+    assert cli.main(["run", "f.flow", "--tower"]) == 1
+    err = capsys.readouterr().err
+    assert "TOWER_ACCESS_TOKEN" in err
+
+
+def test_run_tower_forwards_with_tower(monkeypatch):
+    captured = {}
+    monkeypatch.setenv("TOWER_ACCESS_TOKEN", "fake_token")
+    monkeypatch.setattr(cli, "cmd_build", lambda args: 0)
+    monkeypatch.setattr(cli.shutil, "which", lambda cmd: "/usr/bin/nextflow")
+
+    def fake_call(cmd, **kwargs):
+        captured["cmd"] = cmd
+        return 0
+
+    monkeypatch.setattr(cli.subprocess, "call", fake_call)
+
+    assert cli.main(["run", "f.flow", "--tower"]) == 0
+    assert "-with-tower" in captured["cmd"]
+
+    # In nested mode
+    assert cli.main(["run", "f.flow", "--nested", "--tower"]) == 0
+    assert "-with-tower" in captured["cmd"]
+
+
+def test_tower_subcommand_checks_tw_and_executes(monkeypatch, capsys):
+    captured = {}
+    monkeypatch.setattr(cli, "cmd_build", lambda args: 0)
+
+    # Missing tw CLI aborts
+    monkeypatch.setattr(cli.shutil, "which", lambda cmd: None)
+    assert cli.main(["tower", "f.flow", "--compute-env", "aws", "--results", "s3://b/r"]) == 1
+    err = capsys.readouterr().err
+    assert "CLI `tw` was not found" in err
+
+
+    # With tw and token, executes run.tw.sh
+    monkeypatch.setenv("TOWER_ACCESS_TOKEN", "fake_token")
+    monkeypatch.setattr(cli.shutil, "which", lambda cmd: "/usr/bin/tw" if cmd == "tw" else "/bin/bash")
+
+    def fake_call(cmd, **kwargs):
+        captured["cmd"] = cmd
+        captured["env"] = kwargs.get("env")
+        return 0
+
+    monkeypatch.setattr(cli.subprocess, "call", fake_call)
+    assert cli.main(["tower", "f.flow", "--compute-env", "aws-batch", "--results", "s3://b/r"]) == 0
+    assert captured["cmd"][0] == "bash"
+    assert captured["cmd"][1].endswith("run.tw.sh")
+    assert captured["env"]["TW_COMPUTE_ENV"] == "aws-batch"
+    assert captured["env"]["TW_OUTDIR"] == "s3://b/r"
+
+
+

@@ -35,41 +35,33 @@ its enums allow.
 
 ## Install
 
-It's an ordinary, dependency-free Python package. Install it however you like:
+`nf-chain` is a dependency-free Python CLI and library (runtime uses standard library only). Install it with **[uv](https://github.com/astral-sh/uv)** (recommended) or standard pip:
 
 ```console
-pip install nf-chain                      # once published to PyPI
-pip install git+https://github.com/stavgrossfeld/nf-chain     # straight from GitHub
-pip install .                             # from a clone (add -e for editable)
-make wheel && pip install dist/nf_chain-*.whl        # from a built wheel
+# Recommended: install as a global tool with uv (direct from GitHub)
+uv tool install git+https://github.com/stavgrossfeld/nf-chain
+
+# Or run instantly without installation:
+uvx --from git+https://github.com/stavgrossfeld/nf-chain nf-chain --help
+
+# Or with traditional pip:
+pip install git+https://github.com/stavgrossfeld/nf-chain
+
+# Once published to PyPI:
+# uv tool install nf-chain
 ```
 
-Any of these exposes the `nf-chain` (and `nfchain`) command and lets you
-`import nfchain` as a library. For local development:
+### Local Development
 
 ```console
-git clone <this repo> && cd nf-chain
-python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"
+git clone https://github.com/stavgrossfeld/nf-chain && cd nf-chain
+uv venv && source .venv/bin/activate
+uv pip install -e ".[dev]"
 ```
 
-This installs two identical console commands, `nf-chain` and `nfchain` (into the
-venv). To get a real `nf-chain` on your PATH — better than a shell alias, since
-it works in every shell and in scripts — use the Makefile:
+This installs both `nf-chain` and `nfchain` console commands.
 
-```console
-make install     # symlinks ~/.local/bin/nf-chain -> .venv/bin/nf-chain
-make uninstall   # removes it
-```
-
-`make` on its own lists every target (`test`, `explain`, `build`, `run`, …), so
-you can also drive the tool without installing it at all:
-
-```console
-make run FLOW=examples/sra_to_rnaseq.flow PROFILE=docker
-```
-
-Only the standard library is needed. Running the generated workflow additionally
-needs [Nextflow](https://nextflow.io) (and Java) on `PATH`.
+Only the Python standard library is needed for the compiler and CLI. Running the generated pipelines additionally requires [Nextflow](https://nextflow.io) (and Java) and a container engine (Docker / OrbStack / Singularity) on `PATH`.
 
 ## Commands
 
@@ -83,6 +75,7 @@ needs [Nextflow](https://nextflow.io) (and Java) on `PATH`.
 | `nf-chain preview <flow>` | full task DAG preview of every pipeline using Nextflow `-preview` (zero errors) |
 | `nf-chain stubs <flow>` | stub-run each pipeline to list its tasks, kept light |
 | `nf-chain run <flow>` | build, then `nextflow run` it (live task output) |
+| `nf-chain tower <flow>` | launch chain on Seqera Platform cloud compute environment |
 | `nf-chain watch <flow>` | re-sync stubs on every save |
 | `nf-chain ls [query]` | list the 150-odd nf-core pipelines |
 | `nf-chain show <pipeline>` | print a pipeline's inputs (live schema) + outputs (curated) |
@@ -225,29 +218,33 @@ nf-chain run examples/sra_to_rnaseq.flow \
 - **`--report`**: Automatically generates Nextflow `report.html` and `timeline.html` execution charts.
 - **`--temp` / `--ephemeral`**: Runs completely on the fly in a temporary directory without leaving `build_nf/` files in the repository.
 
-### Forwarding Nextflow flags (Seqera Platform / Tower, reports, etc.)
+### Seqera Platform (Nextflow Tower) Integration
 
-Anything after `--` is passed straight to each `nextflow run`:
+`nf-chain` provides first-class support for Seqera Platform in two modes:
+
+#### 1. Live Run Monitoring (`--tower`)
+Monitor your multi-pipeline execution in real time with progress bars, cost tracking, and team dashboards:
 
 ```console
-export TOWER_ACCESS_TOKEN=...    # from Seqera Platform → Access tokens
-nf-chain run examples/sra_to_rnaseq.flow --profile docker -- -with-tower
+export TOWER_ACCESS_TOKEN="ey..."   # from Seqera Platform → Access Tokens
+nf-chain run examples/sra_to_rnaseq.flow --profile docker --tower
 ```
 
-Because `run.sh` launches each pipeline as its own top-level run, `-with-tower`
-gives you **one Seqera Platform run per pipeline** — properly monitored, with all
-tasks visible — instead of the nested driver that would hide them. The same works
-directly: `build_nf/run.sh docker -with-tower -with-report`.
+Because `run.sh` launches each pipeline as its own top-level run, `--tower` gives you **one clearly labeled Seqera run per pipeline step** with full per-task metrics, rather than hiding child tasks behind a nested driver process.
 
-If you're stuck watching `main.nf` show `NFCORE_SRA  0 of 1` and nothing else,
-it is **not hung** — the nested pipeline is running; its task output is in
-`build_nf/work/<hash>/.command.out`. The generated processes set `debug true` to
-echo that log, but some Nextflow console renderers only flush it on completion,
-so `run.sh` (or `nf-chain run`) is the reliable way to watch tasks live.
+#### 2. Cloud Orchestration (`nf-chain tower`)
+Launch the entire chain to run directly in the cloud on AWS Batch, Google Cloud, or Azure compute environments via the Seqera Platform CLI:
 
-**Don't run `nextflow run main.nf` when you want to watch progress** — that's the
-nested driver, and it shows one line per pipeline by construction. Use
-`./run.sh <profile>` or `nf-chain run`.
+```console
+# Requires the `tw` CLI (brew install seqeralabs/tap/tw)
+nf-chain tower examples/sra_to_rnaseq.flow \
+    --compute-env aws-batch-prod \
+    --results s3://my-bucket/runs/exp1 \
+    --workspace my-team-workspace
+```
+
+`nf-chain` automatically uploads accessions to S3, configures S3 data wiring between pipelines, submits the runs to Seqera Platform, and triggers downstream steps once upstream stages report `SUCCEEDED`.
+
 
 
 ## What gets generated
@@ -378,7 +375,8 @@ to exercise the wiring cheaply use `-stub-run`.
 ## Development
 
 ```console
-.venv/bin/python -m pytest        # 61 tests, no network
+pytest                            # 104 tests, no network, <1s
+mypy src tests                    # 0 errors across 19 files
 ./scripts/vendor_nextflow.sh      # shallow-clone Nextflow into vendor/ for reference
 ```
 
