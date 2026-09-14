@@ -389,6 +389,81 @@ def render_stubs_sh(chain: Chain) -> str:
     return "\n".join(lines) + "\n"
 
 
+def render_tw_sh(chain: Chain) -> str:
+    """Launch the chain on Seqera Platform: one `tw launch` per pipeline, wired
+    by S3 paths.
+
+    Seqera runs one pipeline per launch, so a chain is N launches; each step's
+    `--outdir` is an S3 path and the next step's `--input` is the previous
+    outdir + its published path. Resources come from the compute environment
+    (spot or on-demand) — the laptop cap (local.config) is NOT used here.
+    """
+    lines = [
+        "#!/usr/bin/env bash",
+        "# " + BANNER.lstrip("/ "),
+        "# Launch this chain on Seqera Platform (one run per pipeline, wired by S3).",
+        "# Requires the `tw` CLI, and in your environment:",
+        "#   TOWER_ACCESS_TOKEN   your Seqera token",
+        "#   TW_COMPUTE_ENV       compute-environment name (its work dir + spot/on-demand",
+        "#                        are configured there, not here)",
+        "#   TW_OUTDIR            S3 results base, e.g. s3://my-bucket/results",
+        "#   TW_WORKSPACE         (optional) workspace name/id",
+        "# Uploading the accession list to S3 needs the aws CLI.",
+        "set -euo pipefail",
+        'HERE="$(cd "$(dirname "$0")" && pwd)"',
+        ': "${TOWER_ACCESS_TOKEN:?set TOWER_ACCESS_TOKEN}"',
+        ': "${TW_COMPUTE_ENV:?set TW_COMPUTE_ENV to your Seqera compute environment}"',
+        ': "${TW_OUTDIR:?set TW_OUTDIR to an S3 results base, e.g. s3://bucket/results}"',
+        'WS=(); [ -n "${TW_WORKSPACE:-}" ] && WS=(--workspace="$TW_WORKSPACE")',
+        "",
+        "# merge params/<step>.json with the S3 outdir/input into a launch params file",
+        "mkparams() {  # <static.json> <overrides-json> <out.json>",
+        "    python3 - \"$@\" <<'PY'",
+        "import json,sys",
+        "d=json.load(open(sys.argv[1])); d.update(json.loads(sys.argv[2]))",
+        "json.dump(d, open(sys.argv[3],'w'), indent=2)",
+        "PY",
+        "}",
+        "",
+    ]
+    for i, step in enumerate(chain.steps, 1):
+        ref = step.ref
+        pf = f'"$HERE/params/{step.var}.json"'
+        launch_pf = f'"$HERE/params/{step.var}.tw.json"'
+        # escaped JSON inside a DOUBLE-quoted shell string, so $TW_OUTDIR expands
+        overrides: list[str] = [f'\\"outdir\\":\\"$TW_OUTDIR/{step.var}\\"']
+
+        pre = []
+        if step.accession_input is not None:
+            # the ID file must live where the cloud can read it → upload to S3
+            pre.append(
+                f'aws s3 cp "$HERE/params/{accessions_filename(step)}" '
+                f'"$TW_OUTDIR/{step.var}/ids.csv"'
+            )
+            overrides.append(f'\\"input\\":\\"$TW_OUTDIR/{step.var}/ids.csv\\"')
+        else:
+            for wire in step.wires:
+                if wire.param == "input":
+                    overrides.append(
+                        f'\\"input\\":\\"$TW_OUTDIR/{wire.source_step}/{wire.artifact.path}\\"'
+                    )
+
+        lines.append(f'echo "==> step {i}/{len(chain.steps)}: {ref.full_name}@{ref.revision}"')
+        lines += ["    " + p for p in pre]
+        lines.append(
+            f'    mkparams {pf} "{{{",".join(overrides)}}}" {launch_pf}'
+        )
+        lines.append(
+            f'    tw launch {ref.full_name} -r {ref.revision} "${{WS[@]}}" \\\n'
+            f'        --compute-env="$TW_COMPUTE_ENV" \\\n'
+            f"        --params-file={launch_pf} \\\n"
+            f"        --wait=SUCCEEDED"
+        )
+        lines.append("")
+    lines.append('echo "chain complete → $TW_OUTDIR"')
+    return "\n".join(lines) + "\n"
+
+
 def write(chain: Chain, outdir: Path) -> list[Path]:
     """Write main.nf, run.sh, nextflow.config and params/*. Returns written paths."""
     outdir.mkdir(parents=True, exist_ok=True)
@@ -409,6 +484,11 @@ def write(chain: Chain, outdir: Path) -> list[Path]:
     stubs_sh.write_text(render_stubs_sh(chain))
     stubs_sh.chmod(0o755)
     written.append(stubs_sh)
+
+    tw_sh = outdir / "run.tw.sh"
+    tw_sh.write_text(render_tw_sh(chain))
+    tw_sh.chmod(0o755)
+    written.append(tw_sh)
 
     cfg = outdir / "nextflow.config"
     cfg.write_text(_config(chain))

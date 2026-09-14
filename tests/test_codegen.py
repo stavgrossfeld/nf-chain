@@ -246,6 +246,27 @@ def test_local_resources_are_sane():
     assert cpus >= 1 and mem >= 4
 
 
+def test_tw_launcher_one_launch_per_step_wired_by_s3(chain):
+    sh = codegen.render_tw_sh(chain)
+    assert sh.count("tw launch") == len(chain.steps)
+    # requires the account-specific bits from the environment, not baked in
+    assert 'TW_COMPUTE_ENV:?' in sh and 'TW_OUTDIR:?' in sh and 'TOWER_ACCESS_TOKEN:?' in sh
+    # each step publishes to its own S3 subdir; vars are double-quoted so they expand
+    assert '\\"outdir\\":\\"$TW_OUTDIR/sra\\"' in sh
+    assert '\\"outdir\\":\\"$TW_OUTDIR/rna\\"' in sh
+    # the wire: rnaseq input = fetchngs' S3 samplesheet
+    assert '\\"input\\":\\"$TW_OUTDIR/sra/samplesheet/samplesheet.csv\\"' in sh
+    # accession list uploaded to S3 so the cloud can read it
+    assert 'aws s3 cp' in sh and '$TW_OUTDIR/sra/ids.csv' in sh
+    assert "--wait=SUCCEEDED" in sh
+
+
+def test_tw_launcher_written_and_executable(chain, root):
+    written = codegen.write(chain, root / "build_nf")
+    p = root / "build_nf" / "run.tw.sh"
+    assert p in written and (p.stat().st_mode & 0o100)
+
+
 def test_config_records_the_chain(chain):
     cfg = codegen._config(chain)
     assert "sra=nf-core/fetchngs@1.12.0" in cfg
