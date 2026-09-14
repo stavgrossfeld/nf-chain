@@ -457,7 +457,7 @@ def render_tw_sh(chain: Chain) -> str:
         # exits non-zero unless the run reaches SUCCEEDED; `set -e` then stops the
         # chain, so the next step launches ONLY after the API confirms success.
         lines.append(
-            f'    tw launch https://github.com/{ref.full_name} -r {ref.revision} "${{WS[@]}}" \\\n'
+            f'    tw launch https://github.com/{ref.full_name} -r {ref.revision} "${{WS[@]+"${{WS[@]}}"}}" \\\n'
             f'        --compute-env="$TW_COMPUTE_ENV" \\\n'
             f'        --name="${{TW_TAG:-chain}}_{step.var}" \\\n'
             f"        --params-file={launch_pf} \\\n"
