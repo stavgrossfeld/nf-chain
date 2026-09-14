@@ -1,115 +1,50 @@
 # nf-chain
 
-Chain nf-core pipelines together with a simple import.
-
-> Internals and design rationale: [ARCHITECTURE.md](ARCHITECTURE.md).
+Chain [nf-core](https://nf-co.re) pipelines together with simple, idiomatic Python.
 
 ```python
-# examples/sra_to_rnaseq.flow
-from nf-core import sratools
-from nf-core import rnaseq
+# pipeline.flow
+from nf-core import fetchngs, rnaseq
 
-sra = sratools(ids=["SRR6357070", "SRR6357071"])
+sra = fetchngs(ids=["SRR6357070", "SRR6357071"])
 rna = rnaseq(input=sra.samplesheet, genome="GRCh38")
 ```
 
-```console
-$ nf-chain build examples/sra_to_rnaseq.flow
-built 2-step chain → build_nf/
-
-$ nf-chain run examples/sra_to_rnaseq.flow --stub-run   # dry-run the whole chain on the fly
-[PROCESS 3d/a62225] NFCORE_SRA (nf-core/fetchngs@1.12.0)
-[PROCESS 8d/a01b88] NFCORE_RNA (nf-core/rnaseq@3.14.0)
-[SUCCESS] completed=2 failed=0 cached=0
-
-$ nf-chain run examples/sra_to_rnaseq.flow --profile docker   # for real (needs data + Docker)
-```
-
-Nothing about `rnaseq`'s inputs is hardcoded in nf-chain. The pipeline's own
-`nextflow_schema.json` is fetched at the pinned revision, turned into type stubs,
-and dropped into `.nfchain/stubs` — so the moment you write the import, VSCode
-knows every param the pipeline takes, which ones are required, and which values
-its enums allow.
+`nf-chain` parses the flow, auto-wires samplesheets between pipelines, queries live schemas for type-checking and parameter validation, and compiles a production-ready Nextflow execution project.
 
 ---
 
-## Install
+## Installation
 
-`nf-chain` is a dependency-free Python CLI and library (runtime uses standard library only). Install it with **[uv](https://github.com/astral-sh/uv)** (recommended) or standard pip:
+Install as a global tool using **[uv](https://github.com/astral-sh/uv)** (recommended):
 
-```console
-# Recommended: install as a global tool with uv (direct from GitHub)
+```bash
 uv tool install git+https://github.com/stavgrossfeld/nf-chain
+```
 
-# Or run instantly without installation:
+Or run instantly without installation:
+```bash
 uvx --from git+https://github.com/stavgrossfeld/nf-chain nf-chain --help
-
-# Or with traditional pip:
-pip install git+https://github.com/stavgrossfeld/nf-chain
-
-# Once published to PyPI:
-# uv tool install nf-chain
 ```
 
-### Local Development
+*(With traditional pip: `pip install git+https://github.com/stavgrossfeld/nf-chain`)*
 
-```console
-git clone https://github.com/stavgrossfeld/nf-chain && cd nf-chain
-uv venv && source .venv/bin/activate
-uv pip install -e ".[dev]"
+**Prerequisites:** Python 3.10+, [Nextflow](https://nextflow.io) (and Java), and a container engine (Docker / OrbStack / Singularity). `nf-chain` itself has **zero third-party Python runtime dependencies**.
+
+---
+
+## Quickstart
+
+### 1. Scaffold a flow
+```bash
+nf-chain init my_pipeline.flow
 ```
 
-This installs both `nf-chain` and `nfchain` console commands.
-
-Only the Python standard library is needed for the compiler and CLI. Running the generated pipelines additionally requires [Nextflow](https://nextflow.io) (and Java) and a container engine (Docker / OrbStack / Singularity) on `PATH`.
-
-## Commands
-
-| Command | Description |
-|---|---|
-| `nf-chain init [flow]` | scaffold a starter flow file with imports, parameters, and wiring |
-| `nf-chain explain <flow>` | resolve the chain, show every wire and where it came from |
-| `nf-chain dag <flow>` | draw the chain as a graph (`--format mermaid`\|`dot`) |
-| `nf-chain sync <flow>` | fetch schemas → write editor stubs + JSON Schemas |
-| `nf-chain build <flow>` | generate a runnable Nextflow project into `build_nf/` |
-| `nf-chain preview <flow>` | full task DAG preview of every pipeline using Nextflow `-preview` (zero errors) |
-| `nf-chain stubs <flow>` | stub-run each pipeline to list its tasks, kept light |
-| `nf-chain run <flow>` | build, then `nextflow run` it (live task output) |
-| `nf-chain tower <flow>` | launch chain on Seqera Platform cloud compute environment |
-| `nf-chain watch <flow>` | re-sync stubs on every save |
-| `nf-chain ls [query]` | list the 150-odd nf-core pipelines |
-| `nf-chain show <pipeline>` | print a pipeline's inputs (live schema) + outputs (curated) |
-
-## Previewing each pipeline's tasks (zero downloads, zero errors)
-
-```console
-nf-chain preview examples/sra_to_rnaseq.flow
+### 2. Inspect the chain and wiring
+```bash
+nf-chain explain my_pipeline.flow
 ```
-
-Uses Nextflow's native `-preview` mode to evaluate channels and print the complete
-task DAG for every pipeline in the chain without executing commands or requiring module stubs:
-
-```
-==> step 1/2: nf-core/fetchngs@1.12.0 (DAG preview)
-NFCORE_FETCHNGS:SRA:SRA_IDS_TO_RUNINFO … SRA_TO_SAMPLESHEET …
-==> step 2/2: nf-core/rnaseq@3.14.0 (DAG preview)
-NFCORE_RNASEQ:RNASEQ:FASTQC … TRIMGALORE … PREPARE_GENOME:SALMON_INDEX …
-```
-
-Unlike `-stub-run`, which will fail if a community pipeline has un-stubbed modules,
-`nf-chain preview` works reliably across all nf-core pipelines.
-
-For an instant chain-level wiring test on the fly:
-```console
-nf-chain run examples/sra_to_rnaseq.flow --stub-run
-```
-
-
-## How the chaining works
-
-`nfchain explain` on the example above:
-
-```
+```text
 sra  nf-core/fetchngs@1.12.0
       accessions: SRR6357070, SRR6357071
       nf_core_pipeline = 'rnaseq' (auto)
@@ -119,271 +54,69 @@ rna  nf-core/rnaseq@3.14.0
       genome = 'GRCh38'
 ```
 
-Two things happened on their own.
-
-**The samplesheet edge was inferred.** `rnaseq` declares `input` as a required
-`file-path` with mimetype `text/csv`; `fetchngs` publishes a samplesheet. Kinds
-match, so nf-chain wires them. You can write `rna = rnaseq()` and get the same
-graph — passing `input=sra.samplesheet` just makes the edge explicit.
-
-**fetchngs was told its downstream consumer.** fetchngs has an
-`--nf_core_pipeline` param that formats its samplesheet for a named pipeline.
-That's the pipeline's own chaining hook, so nf-chain sets it rather than hoping
-a generic samplesheet lines up. Set it yourself and nf-chain won't touch it.
-
-Everything is version-pinned to the newest release tag (`dev` is skipped), or to
-whatever you pass as `rev=`.
-
-## Why `sratools` resolves to `fetchngs`
-
-`sratools` is an nf-core *module*, not a pipeline — you can't run it standalone.
-The pipeline that wraps it to pull reads from SRA/ENA/GEO/DDBJ is
-[`nf-core/fetchngs`](https://nf-co.re/fetchngs). Since that's the name most
-people reach for, `src/nfchain/contracts.py` aliases it, along with `sra` and
-`fastq_dl`. `nfchain explain` always prints the pipeline that actually runs.
-
-## Editor integration
-
-`nfchain sync` (or `watch`) writes three things:
-
-- `.nfchain/stubs/nf_core/__init__.pyi` — one typed function per import, with
-  enums as `Literal[...]`, outputs as attributes (`sra.samplesheet`), and the
-  pipeline's own description and required-param list as the docstring.
-- `.nfchain/schemas/<pipeline>.params.schema.json` — validates the generated
-  `build_nf/params/*.json` in the editor.
-- `.vscode/settings.json` — points Pylance at the stubs, maps the JSON Schemas,
-  and associates `*.flow` with Python. Existing settings are preserved.
-
-Every param carries `= ...` in the stub even when it's required, because a
-required input may be satisfied by auto-wiring. Missing inputs are caught by
-`nfchain build`, which is the thing that actually knows the graph.
-
-Keep completions fresh while you work:
-
-```console
-$ nf-chain watch examples/sra_to_rnaseq.flow
-✓ 14:02:11  nf-core/fetchngs → nf-core/rnaseq
+### 3. Fast DAG preview (zero downloads, zero errors)
+Evaluate the full multi-pipeline task graph in seconds without running containers:
+```bash
+nf-chain preview my_pipeline.flow
 ```
 
-Schemas are cached under `.nfchain/cache` for six hours; `--refresh` forces a
-re-fetch. If you're offline, a stale cache entry is served rather than failing.
+### 4. Run the chain
+```bash
+# Live task output across both pipelines:
+nf-chain run my_pipeline.flow --profile docker
 
-## The flow file
-
-A flow file is Python, with one concession: `nf-core` keeps its hyphen, because
-that's what the pipelines are actually called. nf-chain rewrites that one token
-to `nf_core` and parses the rest with `ast`. `from nf_core import ...` works too,
-if you'd rather not see the squiggle. Flow files are **parsed, never executed**.
-
-Steps may only pass keyword arguments. Values are literals or an upstream
-output (`sra.samplesheet`). `rev="3.14.0"` pins that step.
-
-## Running a chain
-
-`nf-chain build` writes both:
-
-- **`run.sh` (default, recommended)** — runs each pipeline as an ordinary
-  top-level `nextflow run`, in order, wiring each step's published output into
-  the next step's input. You see **every task of every pipeline live**, exactly
-  like running nf-core by hand. `nf-chain run` uses this.
-- **`main.nf` (nested DAG)** — one Nextflow driver process per pipeline, each
-  shelling out to a child `nextflow run`. Nextflow manages the graph, but the
-  child's tasks are hidden: you see one `NFCORE_SRA  0 of 1` line for the whole
-  duration of that pipeline, which looks like a hang during a long download. Use
-  `nf-chain run --nested` (or run `main.nf` directly) if you want it.
-
-```console
-$ build_nf/run.sh docker
-==> step 1/2: nf-core/fetchngs@1.12.0
-[PROCESS 54/7bbde0] NFCORE_FETCHNGS:SRA:SRA_IDS_TO_RUNINFO (SRR6357070)
-[PROCESS 36/a87f25] NFCORE_FETCHNGS:SRA:SRA_FASTQ_FTP (SRX3453465_SRR6357070)
-...
-==> step 2/2: nf-core/rnaseq@3.14.0
-[PROCESS .. / ......] NFCORE_RNASEQ:RNASEQ:...
+# Dry-run with mock outputs in seconds:
+nf-chain run my_pipeline.flow --stub-run
 ```
 
-### Production Options: S3 Results, Scratch Storage, and Reports
+---
 
-```console
-# Direct results and scratch workdir to high-speed storage or S3, and generate HTML reports:
-nf-chain run examples/sra_to_rnaseq.flow \
-    --profile docker \
-    --results s3://my-bucket/runs/exp1 \
-    --work-dir /mnt/scratch/work \
-    --report
-```
+## Features
 
-- **`--results <path>`**: Automatically handles AWS authentication and directs final outputs.
-- **`-w / --work-dir <path>`**: Directs heavy intermediate scratch files away from the local directory (accepts local paths or `s3://`).
-- **`--report`**: Automatically generates Nextflow `report.html` and `timeline.html` execution charts.
-- **`--temp` / `--ephemeral`**: Runs completely on the fly in a temporary directory without leaving `build_nf/` files in the repository.
+- 🔗 **Smart Auto-Wiring**: Automatically infers samplesheet connections between upstream producers (like `fetchngs`) and downstream consumers (`rnaseq`, `sarek`, `demo`), and sets formatting flags like `--nf_core_pipeline` automatically.
+- 💡 **IDE Type Stubs (`.pyi`)**: `nf-chain sync` fetches each pipeline's `nextflow_schema.json` to generate typed stubs with autocompletion, enums as `Literal[...]`, and docstrings in VSCode and PyCharm.
+- ⚡ **Zero-Execution DAG Previews**: Uses Nextflow's native `-preview` mode to evaluate channels and display the full task DAG of every pipeline in ~3 seconds.
+- ☁️ **Seqera Platform (Tower) Ready**: 
+  - Real-time live monitoring: `nf-chain run flow.flow --tower`
+  - Cloud orchestration via `tw` CLI: `nf-chain tower flow.flow --compute-env aws-batch --results s3://bucket/results`
+- 📦 **Zero Runtime Dependencies**: The entire compiler, parser, and CLI run on the Python standard library alone.
 
-### Seqera Platform (Nextflow Tower) Integration
+---
 
-`nf-chain` provides first-class support for Seqera Platform in two modes:
+## CLI Reference
 
-#### 1. Live Run Monitoring (`--tower`)
-Monitor your multi-pipeline execution in real time with progress bars, cost tracking, and team dashboards:
+| Command | Description |
+|---|---|
+| `nf-chain init [flow]` | Scaffold a starter `.flow` file |
+| `nf-chain explain <flow>` | Resolve the chain, verify parameters, and print wiring |
+| `nf-chain preview <flow>` | Print the full Nextflow task DAG for every pipeline in seconds |
+| `nf-chain run <flow>` | Compile and run with live streaming task output (`--profile docker`) |
+| `nf-chain tower <flow>` | Launch the chain into Seqera Platform cloud compute environments |
+| `nf-chain dag <flow>` | Render DAG diagram (`--format mermaid` or `--format dot`) |
+| `nf-chain sync <flow>` | Generate editor type stubs (`.pyi`) and JSON Schemas |
+| `nf-chain watch <flow>` | Automatically re-sync stubs on file save |
+| `nf-chain ls [query]` | Search and list available nf-core pipelines |
+| `nf-chain show <pipeline>` | Print a pipeline's schema inputs and published outputs |
 
-```console
-export TOWER_ACCESS_TOKEN="ey..."   # from Seqera Platform → Access Tokens
-nf-chain run examples/sra_to_rnaseq.flow --profile docker --tower
-```
+---
 
-Because `run.sh` launches each pipeline as its own top-level run, `--tower` gives you **one clearly labeled Seqera run per pipeline step** with full per-task metrics, rather than hiding child tasks behind a nested driver process.
+## Execution Modes
 
-#### 2. Cloud Orchestration (`nf-chain tower`)
-Launch the entire chain to run directly in the cloud on AWS Batch, Google Cloud, or Azure compute environments via the Seqera Platform CLI:
+- **Sequential Task Streaming (`default`)**: Runs each pipeline step sequentially via `run.sh`. Every individual task (`FASTQC`, `STAR`, `MULTIQC`) streams live to your console and reports individually to Seqera Platform.
+- **Unified DAG Driver (`--nested`)**: Runs `build_nf/main.nf` directly, where Nextflow manages the execution graph.
 
-```console
-# Requires the `tw` CLI (brew install seqeralabs/tap/tw)
-nf-chain tower examples/sra_to_rnaseq.flow \
-    --compute-env aws-batch-prod \
-    --results s3://my-bucket/runs/exp1 \
-    --workspace my-team-workspace
-```
-
-`nf-chain` automatically uploads accessions to S3, configures S3 data wiring between pipelines, submits the runs to Seqera Platform, and triggers downstream steps once upstream stages report `SUCCEEDED`.
-
-
-
-## What gets generated
-
-`build_nf/main.nf` has one process per step, each shelling out to
-`nextflow run nf-core/<name> -r <rev>`:
-
-```groovy
-process NFCORE_RNA {
-    tag "nf-core/rnaseq@3.14.0"
-
-    input:
-    path params_file
-    path in_input
-
-    output:
-    path "rna", emit: outdir
-    path "rna/star_salmon/salmon.merged.gene_counts.tsv", emit: counts, optional: true
-
-    script:
-    """
-    nextflow run nf-core/rnaseq \
-        -r 3.14.0 \
-        -profile ${params.nf_profile} \
-        -params-file ${params_file} \
-        --input ${in_input} \
-        --outdir rna
-    """
-}
-```
-
-Literal params go into `build_nf/params/<step>.json`; chained inputs are passed
-on the command line, because only Nextflow knows their staged paths at runtime.
-An artifact consumed downstream is a required output; the rest are `optional`.
-
-Every process also gets a `stub:` block that `touch`es its declared outputs, so
-`nextflow run build_nf/main.nf -stub-run` executes the entire DAG in seconds
-without running a single real pipeline. That's the fast way to check a chain is
-wired correctly — if a downstream input isn't actually produced upstream, the
-stub run fails at that wire. `-profile docker` on the driver selects the profile
-handed to the nested runs (`-profile singularity`, `conda`, `podman`, `test`
-work too); the tiny driver processes always run locally.
-
-## Does the chaining actually work?
-
-Yes — and you can watch the data cross the wire. After a stub run of the example:
-
-```console
-$ ls build_nf/results/
-sra/samplesheet/samplesheet.csv          # produced by fetchngs
-rna/star_salmon/salmon.merged.gene_counts.tsv   # produced by rnaseq
-
-# Nextflow staged fetchngs' samplesheet as rnaseq's input:
-$ ls -l build_nf/work/<rna-task>/
-samplesheet.csv -> .../work/<sra-task>/sra/samplesheet/samplesheet.csv
-```
-
-It is not hardcoded to one pair. `fetchngs → sarek` (variant calling) chains the
-same way — `sarek(input=sra.samplesheet)` — and stub-runs to `completed=2`.
-
-**What "anything" means, precisely.** All 152 nf-core pipelines can be imported,
-resolved, pinned, and turned into stubs — that half is fully general, because
-it's read from each pipeline's schema. Chaining has one requirement: the
-*producer* needs an entry in the `EMITS` table (`src/nfchain/contracts.py`),
-which currently covers `fetchngs`, `rnaseq`, `sarek` and `atacseq`. A pipeline
-with no `EMITS` entry is fine as the **last** step (nothing reads its output),
-but to feed a downstream step you add its published paths there — a few lines.
-Auto-wiring fires only for a consumer's *required* samplesheet; optional inputs
-(like sarek's) are wired explicitly. Everything else about the pipeline is still
-discovered live.
-
-## Troubleshooting a real run
-
-**`Unexpected input: '('` / `def check_max(obj, type)` — config parsing failed.**
-2024-era nf-core pipelines (e.g. fetchngs 1.12.0) put a `def check_max(...)`
-helper in `nextflow.config`, and cap only the *minimum* Nextflow version. A
-current Nextflow (25+) defaults to a strict config parser that rejects that
-helper. The fix is the **legacy parser, not an older Nextflow** — nf-chain
-exports `NXF_SYNTAX_PARSER=v1` before each nested run (the `nf_syntax_parser`
-param, default `v1`). It's read at config-parse time, so it works with any
-`nextflow` on `PATH`, Homebrew's fixed build included. Once every pipeline in
-the chain has dropped `check_max`, switch to the strict parser:
-
-```console
-nextflow run build_nf/main.nf -profile docker --nf_syntax_parser v2
-```
-
-Verified: with `v1`, fetchngs 1.12.0 runs its real tasks under Nextflow 26.04.
-
-**`Cannot connect to the Docker daemon`.** Start Docker Desktop / OrbStack. This
-is unrelated to nf-chain — the nested pipeline reached the point of launching a
-container, which means config parsing and wiring already succeeded.
-
-**`Unknown configuration profile: 'docker'`.** The generated `nextflow.config`
-defines the profiles, and Nextflow reads it from the script's directory — so run
-the generated `main.nf`, not a hand-written one, and rebuild after upgrading
-nf-chain (`nf-chain build`) so the config includes the profile block.
-
-**Can I use `-profile test`?** Yes, but know what it does: nf-core's `test`
-profile makes each pipeline run on *its own* bundled mini-dataset, which means
-each nested run ignores the wiring and runs standalone — fetchngs downloads its
-test accessions, rnaseq uses its test samplesheet, and they don't feed each
-other. It's a good smoke test that each pipeline runs in your environment, not a
-test of the chain. For a connected run use `-profile docker` with real inputs;
-to exercise the wiring cheaply use `-stub-run`.
-
-## Limitations, honestly
-
-- **Nested `nextflow run`.** Nextflow's DSL2 `include` pulls in modules and
-  subworkflows from the local project, not whole remote pipelines. Composing
-  *released* pipelines therefore means a nested run per step. Each nested run
-  gets its own work directory, so `-resume` works within a step but the driver
-  can't resume into the middle of one. The driver processes are tiny; the nested
-  runs request resources from the executor themselves.
-- **Nextflow must be on `PATH` inside the task environment.** The driver runs
-  with `executor = 'local'` for that reason. Pointing it at a scheduler means
-  making `nextflow` available on the compute nodes.
-- **Output contracts are curated.** `nextflow_schema.json` describes a
-  pipeline's inputs exhaustively — which is why nf-chain reads them live — but
-  says nothing about what it publishes. The `EMITS` table in
-  `src/nfchain/contracts.py` maps published paths to artifact kinds, and it
-  currently covers `fetchngs`, `rnaseq`, `sarek` and `atacseq`. Adding a
-  pipeline there is the only hand-written step; everything else is discovered.
-- **Auto-wiring only matches samplesheets.** A BAM- or VCF-consuming pipeline
-  has to be wired explicitly. The kind system supports it; the inference doesn't
-  guess yet.
+---
 
 ## Development
 
-```console
-pytest                            # 104 tests, no network, <1s
-mypy src tests                    # 0 errors across 19 files
-./scripts/vendor_nextflow.sh      # shallow-clone Nextflow into vendor/ for reference
+```bash
+git clone https://github.com/stavgrossfeld/nf-chain && cd nf-chain
+uv venv && source .venv/bin/activate
+uv pip install -e ".[dev]"
+
+# Run test suite (104 tests, no network required):
+pytest
+mypy src tests
 ```
 
-The generated project was launched end-to-end in `-stub-run` mode against a real
-Nextflow (26.04) to confirm the DSL compiles, the workflow DAG builds, and the
-upstream samplesheet is genuinely staged as the downstream pipeline's input.
-
-Tests stub the registry and every schema, so the suite is offline and fast. The
-fixtures in `tests/conftest.py` mirror the real shape of `pipelines.json` and
-`nextflow_schema.json` (including nf-core's move from `definitions` to `$defs`).
+For compiler architecture, data structures, and contract design, see [ARCHITECTURE.md](ARCHITECTURE.md).
