@@ -89,14 +89,18 @@ def cmd_dag(args) -> int:
 
 def cmd_build(args) -> int:
     chain, root = _load(args.flow, args.refresh)
-    outdir = root / args.outdir
-    stubgen.sync(chain, root, build_dir=args.outdir)
+    outdir = Path(args.outdir)
+    if not outdir.is_absolute():
+        outdir = root / outdir
+    if not getattr(args, "temp", False):
+        stubgen.sync(chain, root, build_dir=str(args.outdir))
     written = codegen.write(chain, outdir)
-    print(f"built {len(chain.steps)}-step chain → {args.outdir}/")
-    for p in written:
-        print(f"  {_rel(p, root)}")
-    print(f"\nrun it (live per-task output):  {args.outdir}/run.sh docker")
-    print(f"or Nextflow-managed DAG:        nextflow run {args.outdir}/main.nf -profile docker")
+    if not getattr(args, "quiet", False):
+        print(f"built {len(chain.steps)}-step chain → {args.outdir}/")
+        for p in written:
+            print(f"  {_rel(p, root)}")
+        print(f"\nrun it (live per-task output):  {args.outdir}/run.sh docker")
+        print(f"or Nextflow-managed DAG:        nextflow run {args.outdir}/main.nf -profile docker")
     return 0
 
 
@@ -143,22 +147,15 @@ def cmd_init(args) -> int:
     return 0
 
 
-def cmd_run(args) -> int:
+def _execute_run(args, extra: list[str]) -> int:
     rc = cmd_build(args)
     if rc:
         return rc
+    outpath = Path(args.outdir)
     if shutil.which("nextflow") is None:
         raise Abort(
             "nextflow is not on PATH — install it (https://nextflow.io) or run "
-            f"`{args.outdir}/run.sh` on a machine that has it"
-        )
-    # Args after `--` are forwarded to the nextflow run(s):
-    # e.g. `nf-chain run flow --profile docker -- -with-tower`.
-    extra = args.nf_extra
-    if any(a in ("-profile", "--profile") for a in extra):
-        raise Abort(
-            "set the profile with nf-chain's `--profile ...` before `--`, "
-            "not as a forwarded flag"
+            f"`{outpath}/run.sh` on a machine that has it"
         )
     env = dict(os.environ)
     if getattr(args, "results_dir", None):
@@ -192,7 +189,7 @@ def cmd_run(args) -> int:
 
     if args.nested:
         # One driver process per pipeline; nested task output is hidden.
-        cmd = ["nextflow", "run", f"{args.outdir}/main.nf", "-profile", args.profile]
+        cmd = ["nextflow", "run", f"{outpath}/main.nf", "-profile", args.profile]
         if getattr(args, "results_dir", None):
             cmd += ["--outdir", str(args.results_dir)]
         if args.resume:
@@ -204,11 +201,39 @@ def cmd_run(args) -> int:
             raise Abort(
                 "bash was not found on PATH. On Windows or environments without bash, "
                 "run with `nfchain run --nested` to launch the Nextflow-managed DAG directly, "
-                f"or run `{args.outdir}/run.sh` in WSL or Git Bash."
+                f"or run `{outpath}/run.sh` in WSL or Git Bash."
             )
-        cmd = ["bash", f"{args.outdir}/run.sh", args.profile, *extra]
+        cmd = ["bash", f"{outpath}/run.sh", args.profile, *extra]
     print(f"\n$ {' '.join(cmd)}\n")
     return subprocess.call(cmd, env=env)
+
+
+def cmd_run(args) -> int:
+    extra = list(args.nf_extra)
+    if any(a in ("-profile", "--profile") for a in extra):
+        raise Abort(
+            "set the profile with nf-chain's `--profile ...` before `--`, "
+            "not as a forwarded flag"
+        )
+
+    # First-class --stub-run / --dry-run:
+    if getattr(args, "stub_run", False):
+        args.nested = True
+        if "-stub-run" not in extra:
+            extra.append("-stub-run")
+
+    explicit_outdir = "-o" in sys.argv or "--outdir" in sys.argv
+    use_temp = getattr(args, "temp", False) or (getattr(args, "stub_run", False) and not explicit_outdir)
+
+    if use_temp:
+        import tempfile
+        args.temp = True
+        args.quiet = True
+        with tempfile.TemporaryDirectory(prefix="nfchain_") as tmp:
+            args.outdir = Path(tmp)
+            return _execute_run(args, extra)
+
+    return _execute_run(args, extra)
 
 
 def cmd_stubs(args) -> int:
@@ -446,6 +471,20 @@ def build_parser() -> argparse.ArgumentParser:
         "--nested",
         action="store_true",
         help="run the nested main.nf (Nextflow-managed DAG) instead of sequential run.sh",
+    )
+    p_run.add_argument(
+        "--stub-run",
+        "--dry-run",
+        dest="stub_run",
+        action="store_true",
+        help="dry-run the whole chain in seconds with Nextflow -stub-run (runs on the fly)",
+    )
+    p_run.add_argument(
+        "--temp",
+        "--ephemeral",
+        dest="temp",
+        action="store_true",
+        help="build and run completely on the fly in a temporary directory (no build_nf/ created)",
     )
     p_run.set_defaults(func=cmd_run)
 

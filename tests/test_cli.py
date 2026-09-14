@@ -126,3 +126,55 @@ def test_results_dir_forwarded(monkeypatch):
     assert cli.main(["run", "f.flow", "--nested", "--results", "s3://my-bucket/runs"]) == 0
     assert "--outdir" in captured["cmd"]
     assert "s3://my-bucket/runs" in captured["cmd"]
+
+
+def test_run_stub_run_defaults_to_temp_and_nested(monkeypatch):
+    captured = {}
+
+    def fake_build(args):
+        captured["outdir"] = str(args.outdir)
+        captured["temp"] = getattr(args, "temp", False)
+        return 0
+
+    def fake_which(_):
+        return "/usr/bin/nextflow"
+
+    def fake_call(cmd, **kwargs):
+        captured["cmd"] = cmd
+        return 0
+
+    monkeypatch.setattr(cli, "cmd_build", fake_build)
+    monkeypatch.setattr(cli.shutil, "which", fake_which)
+    monkeypatch.setattr(cli.subprocess, "call", fake_call)
+
+    assert cli.main(["run", "f.flow", "--stub-run"]) == 0
+    assert "nfchain_" in captured["outdir"]
+    assert captured["temp"] is True
+    assert captured["cmd"][0] == "nextflow"
+    assert captured["cmd"][1] == "run"
+    assert "-stub-run" in captured["cmd"]
+
+
+def test_run_temp_flag_uses_ephemeral_dir(monkeypatch):
+    captured = {}
+
+    def fake_build(args):
+        captured["outdir"] = str(args.outdir)
+        captured["temp"] = getattr(args, "temp", False)
+        return 0
+
+    def fake_which(_):
+        return "/usr/bin/nextflow"
+
+    def fake_call(cmd, **kwargs):
+        captured["cmd"] = cmd
+        return 0
+
+    monkeypatch.setattr(cli, "cmd_build", fake_build)
+    monkeypatch.setattr(cli.shutil, "which", fake_which)
+    monkeypatch.setattr(cli.subprocess, "call", fake_call)
+
+    assert cli.main(["run", "f.flow", "--temp"]) == 0
+    assert "nfchain_" in captured["outdir"]
+    assert captured["temp"] is True
+
