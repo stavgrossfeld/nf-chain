@@ -63,10 +63,14 @@ wheel: $(BIN)
 run: $(BIN)
 	@$(BIN) run $(FLOW) --profile $(PROFILE)
 
+## typecheck: run static type checks with mypy
+typecheck: $(BIN)
+	@$(PY) -m mypy src tests
+
 ## clean: remove generated project and caches
 clean:
-	@rm -rf build_nf .nfchain .pytest_cache .mypy_cache
+	@rm -rf build_nf .nfchain .pytest_cache .mypy_cache dist build *.egg-info out work results .coverage coverage.xml htmlcov
 	@find . -name __pycache__ -type d -prune -exec rm -rf {} + 2>/dev/null || true
 	@echo "cleaned"
 
-.PHONY: help venv install uninstall test explain sync dag build wheel run clean
+.PHONY: help venv install uninstall test typecheck explain sync dag build wheel run clean

@@ -41,6 +41,26 @@ def _local_resources() -> tuple[int, int]:
                 if line.startswith("MemTotal:"):
                     total_gb = int(line.split()[1]) // (1024**2)
                     break
+        elif platform.system() == "Windows":
+            import ctypes
+            windll = getattr(ctypes, "windll", None)
+            if windll:
+                class MEMORYSTATUSEX(ctypes.Structure):
+                    _fields_ = [
+                        ("dwLength", ctypes.c_ulong),
+                        ("dwMemoryLoad", ctypes.c_ulong),
+                        ("ullTotalPhys", ctypes.c_ulonglong),
+                        ("ullAvailPhys", ctypes.c_ulonglong),
+                        ("ullTotalPageFile", ctypes.c_ulonglong),
+                        ("ullAvailPageFile", ctypes.c_ulonglong),
+                        ("ullTotalVirtual", ctypes.c_ulonglong),
+                        ("ullAvailVirtual", ctypes.c_ulonglong),
+                        ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+                    ]
+                stat = MEMORYSTATUSEX()
+                stat.dwLength = ctypes.sizeof(stat)
+                if windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat)):
+                    total_gb = int(stat.ullTotalPhys // (1024**3))
     except (OSError, ValueError):
         pass
     return cpus, max(4, total_gb - 6)
@@ -285,7 +305,16 @@ def render_run_sh(chain: Chain) -> str:
         "# Args after the profile are forwarded verbatim to each pipeline launch",
         "# (e.g. -with-tower, -with-report, -resume, -c my.config).",
         'EXTRA=("$@")',
-        'OUTDIR="$HERE/results"',
+        'OUTDIR="${NFCHAIN_RESULTS:-${NFCHAIN_OUTDIR:-$HERE/results}}"',
+        "# If writing to S3, ensure AWS credentials and region are exported for Nextflow's JVM",
+        'if [[ "$OUTDIR" == s3://* ]] || [ -n "${AWS_PROFILE:-}" ]; then',
+        '    if [ -z "${AWS_ACCESS_KEY_ID:-}" ] && command -v aws >/dev/null 2>&1; then',
+        '        eval "$(aws configure export-credentials --format env 2>/dev/null || true)"',
+        '    fi',
+        '    if [ -z "${AWS_DEFAULT_REGION:-}" ] && [ -z "${AWS_REGION:-}" ] && command -v aws >/dev/null 2>&1; then',
+        '        export AWS_DEFAULT_REGION="$(aws configure get region 2>/dev/null || echo "us-east-1")"',
+        '    fi',
+        'fi',
         "# Shared run tag: every step of THIS invocation is named <TAG>_<step>, so",
         "# the runs are linkable in `nextflow log` and the logs. Override with",
         "# NFCHAIN_TAG=myexp ./run.sh ...  (must start with a letter).",
@@ -485,19 +514,25 @@ def write(chain: Chain, outdir: Path) -> list[Path]:
     main.write_text(render_main(chain))
     written.append(main)
 
+    def _safe_chmod(p: Path) -> None:
+        try:
+            p.chmod(0o755)
+        except OSError:
+            pass
+
     run_sh = outdir / "run.sh"
     run_sh.write_text(render_run_sh(chain))
-    run_sh.chmod(0o755)
+    _safe_chmod(run_sh)
     written.append(run_sh)
 
     stubs_sh = outdir / "stubs.sh"
     stubs_sh.write_text(render_stubs_sh(chain))
-    stubs_sh.chmod(0o755)
+    _safe_chmod(stubs_sh)
     written.append(stubs_sh)
 
     tw_sh = outdir / "run.tw.sh"
     tw_sh.write_text(render_tw_sh(chain))
-    tw_sh.chmod(0o755)
+    _safe_chmod(tw_sh)
     written.append(tw_sh)
 
     cfg = outdir / "nextflow.config"

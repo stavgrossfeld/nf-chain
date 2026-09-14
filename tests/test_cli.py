@@ -17,8 +17,9 @@ def _run_cmd(monkeypatch, argv):
     def fake_which(_):
         return "/usr/bin/nextflow"
 
-    def fake_call(cmd):
+    def fake_call(cmd, **kwargs):
         captured["cmd"] = cmd
+        captured["env"] = kwargs.get("env")
         return 0
 
     monkeypatch.setattr(cli, "cmd_build", fake_build)
@@ -61,3 +62,67 @@ def test_profile_before_dashdash_is_not_treated_as_passthrough(monkeypatch):
     cmd = _run_cmd(monkeypatch, ["run", "f.flow", "--profile", "singularity", "--", "-resume"])
     assert cmd[2] == "singularity"
     assert cmd[3:] == ["-resume"]
+
+
+def test_init_creates_valid_flow(tmp_path):
+    target = tmp_path / "custom.flow"
+    assert cli.main(["init", str(target)]) == 0
+    assert target.exists()
+    content = target.read_text()
+    assert "from nf-core import sratools" in content
+    assert "from nf-core import rnaseq" in content
+
+    # Should fail if file exists and no --force
+    assert cli.main(["init", str(target)]) == 1
+
+    # Overwrites with --force
+    assert cli.main(["init", str(target), "--force"]) == 0
+
+
+def test_help_displays_flow_guide(capsys):
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["--help"])
+    assert exc.value.code == 0
+    captured = capsys.readouterr().out
+    assert "HOW TO WRITE A .FLOW FILE:" in captured
+    assert "from nf-core import" in captured
+    assert "Auto-Wiring:" in captured
+
+
+def test_run_missing_bash_raises_abort(monkeypatch, tmp_path):
+    flow = tmp_path / "test.flow"
+    flow.write_text("from nf-core import demo\nqc = demo()\n")
+
+    monkeypatch.setattr(cli, "cmd_build", lambda args: 0)
+    monkeypatch.setattr(cli.shutil, "which", lambda cmd: "/usr/bin/nextflow" if cmd == "nextflow" else None)
+
+    # Missing bash without --nested aborts
+    assert cli.main(["run", str(flow)]) == 1
+
+
+def test_results_dir_forwarded(monkeypatch):
+    captured = {}
+
+    def fake_build(args):
+        return 0
+
+    def fake_which(_):
+        return "/usr/bin/nextflow"
+
+    def fake_call(cmd, **kwargs):
+        captured["cmd"] = cmd
+        captured["env"] = kwargs.get("env")
+        return 0
+
+    monkeypatch.setattr(cli, "cmd_build", fake_build)
+    monkeypatch.setattr(cli.shutil, "which", fake_which)
+    monkeypatch.setattr(cli.subprocess, "call", fake_call)
+
+    # In default sequential mode, NFCHAIN_RESULTS is set in env
+    assert cli.main(["run", "f.flow", "--results", "s3://my-bucket/runs"]) == 0
+    assert captured["env"]["NFCHAIN_RESULTS"] == "s3://my-bucket/runs"
+
+    # In nested mode, --outdir is added to nextflow command
+    assert cli.main(["run", "f.flow", "--nested", "--results", "s3://my-bucket/runs"]) == 0
+    assert "--outdir" in captured["cmd"]
+    assert "s3://my-bucket/runs" in captured["cmd"]

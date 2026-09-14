@@ -156,7 +156,12 @@ def resolve(flow: Flow, root: Path, refresh: bool = False) -> Chain:
         # 2. An accession list is a value, not a path — codegen materialises it.
         if ref.name in contracts.ACCESSION_INPUT and "input" in rs.params:
             ids = rs.params.pop("input")
-            rs.accession_input = [ids] if isinstance(ids, str) else list(ids)
+            if isinstance(ids, str):
+                rs.accession_input = [ids]
+            elif isinstance(ids, (list, tuple, set)):
+                rs.accession_input = [str(x) for x in ids]
+            else:
+                rs.accession_input = [str(ids)]
 
         # 3. Chain: fill a missing required samplesheet from upstream.
         auto = _autowire(rs, resolved, flow.path)

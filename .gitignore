@@ -13,7 +13,18 @@ dist/
 build_nf/
 work/
 results/
+out/
 .nextflow*
+
+# test & coverage
+.coverage
+coverage.xml
+htmlcov/
+
+# OS and editor files
+.DS_Store
+*.swp
+*.swo
 
 # vendored upstream source, cloned by scripts/vendor_nextflow.sh
 vendor/

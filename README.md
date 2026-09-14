@@ -39,7 +39,7 @@ It's an ordinary, dependency-free Python package. Install it however you like:
 
 ```console
 pip install nf-chain                      # once published to PyPI
-pip install git+https://github.com/stav/nf-chain     # straight from GitHub
+pip install git+https://github.com/stavgrossfeld/nf-chain     # straight from GitHub
 pip install .                             # from a clone (add -e for editable)
 make wheel && pip install dist/nf_chain-*.whl        # from a built wheel
 ```
@@ -75,6 +75,7 @@ needs [Nextflow](https://nextflow.io) (and Java) on `PATH`.
 
 | | |
 |---|---|
+| `nfchain init [flow]` | scaffold a starter flow file with imports, parameters, and wiring |
 | `nfchain explain <flow>` | resolve the chain, show every wire and where it came from |
 | `nfchain dag <flow>` | draw the chain as a graph (`--format mermaid`\|`dot`) |
 | `nfchain sync <flow>` | fetch schemas → write editor stubs + JSON Schemas |
