@@ -108,9 +108,9 @@ STARTER_FLOW = '''\
 """Pipeline chain definition.
 
 Run this with:
-    nfchain explain {flow_name}
-    nfchain build   {flow_name}
-    nfchain run     {flow_name} --profile docker
+    nf-chain explain {flow_name}
+    nf-chain build   {flow_name}
+    nf-chain run     {flow_name} --profile docker
 """
 
 from nf-core import sratools
@@ -140,10 +140,10 @@ def cmd_init(args) -> int:
     target.write_text(STARTER_FLOW.format(flow_name=target.name))
     print(f"created starter flow file → {target}")
     print(f"\nnext steps:")
-    print(f"  nfchain sync    {target}   # download schemas & setup VSCode stubs")
-    print(f"  nfchain explain {target}   # inspect resolved arguments and wiring")
-    print(f"  nfchain dag     {target}   # visualize pipeline DAG (mermaid)")
-    print(f"  nfchain build   {target}   # compile into build_nf/ Nextflow project")
+    print(f"  nf-chain sync    {target}   # download schemas & setup VSCode stubs")
+    print(f"  nf-chain explain {target}   # inspect resolved arguments and wiring")
+    print(f"  nf-chain dag     {target}   # visualize pipeline DAG (mermaid)")
+    print(f"  nf-chain build   {target}   # compile into build_nf/ Nextflow project")
     return 0
 
 
@@ -187,11 +187,25 @@ def _execute_run(args, extra: list[str]) -> int:
                 except Exception:
                     pass
 
+    if getattr(args, "work_dir", None):
+        env["NFCHAIN_WORKDIR"] = str(args.work_dir)
+
+    if getattr(args, "report", False) and not args.nested:
+        if "-with-report" not in extra:
+            extra.append("-with-report")
+        if "-with-timeline" not in extra:
+            extra.append("-with-timeline")
+
     if args.nested:
         # One driver process per pipeline; nested task output is hidden.
         cmd = ["nextflow", "run", f"{outpath}/main.nf", "-profile", args.profile]
         if getattr(args, "results_dir", None):
             cmd += ["--outdir", str(args.results_dir)]
+        if getattr(args, "work_dir", None):
+            cmd += ["-work-dir", str(args.work_dir)]
+        if getattr(args, "report", False):
+            rdir = str(getattr(args, "results_dir", None) or f"{outpath}/results")
+            cmd += ["-with-report", f"{rdir}/report.html", "-with-timeline", f"{rdir}/timeline.html"]
         if args.resume:
             cmd.append("-resume")
         cmd += extra
@@ -200,7 +214,7 @@ def _execute_run(args, extra: list[str]) -> int:
         if shutil.which("bash") is None:
             raise Abort(
                 "bash was not found on PATH. On Windows or environments without bash, "
-                "run with `nfchain run --nested` to launch the Nextflow-managed DAG directly, "
+                "run with `nf-chain run --nested` to launch the Nextflow-managed DAG directly, "
                 f"or run `{outpath}/run.sh` in WSL or Git Bash."
             )
         cmd = ["bash", f"{outpath}/run.sh", args.profile, *extra]
@@ -241,13 +255,31 @@ def cmd_stubs(args) -> int:
     rc = cmd_build(args)
     if rc:
         return rc
+    outpath = Path(args.outdir)
     if shutil.which("nextflow") is None:
-        raise Abort(f"nextflow is not on PATH — run `{args.outdir}/stubs.sh` where it is")
+        raise Abort(f"nextflow is not on PATH — run `{outpath}/stubs.sh` where it is")
     if shutil.which("bash") is None:
         raise Abort(
             "bash was not found on PATH — run in WSL / Git Bash, or execute Nextflow directly."
         )
-    cmd = ["bash", f"{args.outdir}/stubs.sh", args.profile]
+    cmd = ["bash", f"{outpath}/stubs.sh", args.profile]
+    print(f"\n$ {' '.join(cmd)}\n")
+    return subprocess.call(cmd)
+
+
+def cmd_preview(args) -> int:
+    """Preview each pipeline's task DAG with Nextflow -preview (no execution, zero errors)."""
+    rc = cmd_build(args)
+    if rc:
+        return rc
+    outpath = Path(args.outdir)
+    if shutil.which("nextflow") is None:
+        raise Abort(f"nextflow is not on PATH — run `{outpath}/preview.sh` where it is")
+    if shutil.which("bash") is None:
+        raise Abort(
+            "bash was not found on PATH — run in WSL / Git Bash, or execute Nextflow directly."
+        )
+    cmd = ["bash", f"{outpath}/preview.sh", args.profile]
     print(f"\n$ {' '.join(cmd)}\n")
     return subprocess.call(cmd)
 
@@ -375,12 +407,13 @@ COMPLETE EXAMPLE (pipeline.flow):
 
 TYPICAL WORKFLOW:
 ------------------
-    nfchain init pipeline.flow              # scaffold a starter .flow file
-    nfchain sync pipeline.flow              # fetch schemas & configure VSCode stubs
-    nfchain explain pipeline.flow           # inspect resolved arguments and wires
-    nfchain dag pipeline.flow               # preview the DAG graph (mermaid/dot)
-    nfchain build pipeline.flow             # compile into build_nf/ Nextflow project
-    nfchain run pipeline.flow --profile docker   # run with live streaming task output
+    nf-chain init pipeline.flow              # scaffold a starter .flow file
+    nf-chain sync pipeline.flow              # fetch schemas & configure VSCode stubs
+    nf-chain explain pipeline.flow           # inspect resolved arguments and wires
+    nf-chain dag pipeline.flow               # preview the DAG graph (mermaid/dot)
+    nf-chain preview pipeline.flow           # inspect full task list across all pipelines
+    nf-chain build pipeline.flow             # compile into build_nf/ Nextflow project
+    nf-chain run pipeline.flow --profile docker   # run with live streaming task output
 """
 
 
@@ -466,6 +499,18 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="results directory or S3 bucket path (default: build_nf/results)",
     )
+    p_run.add_argument(
+        "-w",
+        "--work-dir",
+        dest="work_dir",
+        default=None,
+        help="directory or S3 bucket path for intermediate task work files (default: ./work)",
+    )
+    p_run.add_argument(
+        "--report",
+        action="store_true",
+        help="generate HTML execution report and timeline charts in the results directory",
+    )
     p_run.add_argument("-resume", "--resume", action="store_true", help="resume execution from cache")
     p_run.add_argument(
         "--nested",
@@ -487,6 +532,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="build and run completely on the fly in a temporary directory (no build_nf/ created)",
     )
     p_run.set_defaults(func=cmd_run)
+
+    p_preview = with_flow(
+        sub.add_parser(
+            "preview",
+            help="preview each pipeline's task DAG (no execution, zero errors)",
+            description="Run each pipeline in Nextflow -preview mode to validate the DAG and list tasks without execution.",
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+        )
+    )
+    p_preview.add_argument(
+        "--profile", default="test,docker", help="profile for preview (default: test,docker)"
+    )
+    p_preview.set_defaults(func=cmd_preview)
 
     p_stubs = with_flow(
         sub.add_parser(

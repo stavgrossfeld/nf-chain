@@ -267,6 +267,16 @@ def test_tw_launcher_written_and_executable(chain, root):
     assert p in written and (p.stat().st_mode & 0o100)
 
 
+def test_preview_sh_written_and_executable(chain, root):
+    written = codegen.write(chain, root / "build_nf")
+    p = root / "build_nf" / "preview.sh"
+    assert p in written and (p.stat().st_mode & 0o100)
+    content = p.read_text()
+    assert "-preview" in content
+    assert "prev_sra" in content
+
+
+
 def test_config_records_the_chain(chain):
     cfg = codegen._config(chain)
     assert "sra=nf-core/fetchngs@1.12.0" in cfg

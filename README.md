@@ -14,15 +14,15 @@ rna = rnaseq(input=sra.samplesheet, genome="GRCh38")
 ```
 
 ```console
-$ nfchain build examples/sra_to_rnaseq.flow
+$ nf-chain build examples/sra_to_rnaseq.flow
 built 2-step chain → build_nf/
 
-$ nextflow run build_nf/main.nf -stub-run -profile docker   # dry-run the whole chain
+$ nf-chain run examples/sra_to_rnaseq.flow --stub-run   # dry-run the whole chain on the fly
 [PROCESS 3d/a62225] NFCORE_SRA (nf-core/fetchngs@1.12.0)
 [PROCESS 8d/a01b88] NFCORE_RNA (nf-core/rnaseq@3.14.0)
 [SUCCESS] completed=2 failed=0 cached=0
 
-$ nextflow run build_nf/main.nf -profile docker             # for real (needs data + Docker)
+$ nf-chain run examples/sra_to_rnaseq.flow --profile docker   # for real (needs data + Docker)
 ```
 
 Nothing about `rnaseq`'s inputs is hardcoded in nf-chain. The pipeline's own
@@ -73,46 +73,44 @@ needs [Nextflow](https://nextflow.io) (and Java) on `PATH`.
 
 ## Commands
 
-| | |
+| Command | Description |
 |---|---|
-| `nfchain init [flow]` | scaffold a starter flow file with imports, parameters, and wiring |
-| `nfchain explain <flow>` | resolve the chain, show every wire and where it came from |
-| `nfchain dag <flow>` | draw the chain as a graph (`--format mermaid`\|`dot`) |
-| `nfchain sync <flow>` | fetch schemas → write editor stubs + JSON Schemas |
-| `nfchain build <flow>` | generate a runnable Nextflow project into `build_nf/` |
-| `nfchain stubs <flow>` | stub-run each pipeline to list its tasks, kept light |
-| `nfchain run <flow>` | build, then `nextflow run` it |
-| `nfchain watch <flow>` | re-sync stubs on every save |
-| `nfchain ls [query]` | list the 150-odd nf-core pipelines |
-| `nfchain show <pipeline>` | print a pipeline's inputs (live schema) + outputs (curated) |
+| `nf-chain init [flow]` | scaffold a starter flow file with imports, parameters, and wiring |
+| `nf-chain explain <flow>` | resolve the chain, show every wire and where it came from |
+| `nf-chain dag <flow>` | draw the chain as a graph (`--format mermaid`\|`dot`) |
+| `nf-chain sync <flow>` | fetch schemas → write editor stubs + JSON Schemas |
+| `nf-chain build <flow>` | generate a runnable Nextflow project into `build_nf/` |
+| `nf-chain preview <flow>` | full task DAG preview of every pipeline using Nextflow `-preview` (zero errors) |
+| `nf-chain stubs <flow>` | stub-run each pipeline to list its tasks, kept light |
+| `nf-chain run <flow>` | build, then `nextflow run` it (live task output) |
+| `nf-chain watch <flow>` | re-sync stubs on every save |
+| `nf-chain ls [query]` | list the 150-odd nf-core pipelines |
+| `nf-chain show <pipeline>` | print a pipeline's inputs (live schema) + outputs (curated) |
 
-## Seeing each pipeline's tasks (without a data run)
+## Previewing each pipeline's tasks (zero downloads, zero errors)
 
 ```console
-nf-chain stubs examples/sra_to_rnaseq.flow
+nf-chain preview examples/sra_to_rnaseq.flow
 ```
 
-Stub-runs each pipeline on its own with its `test` profile, listing every task:
+Uses Nextflow's native `-preview` mode to evaluate channels and print the complete
+task DAG for every pipeline in the chain without executing commands or requiring module stubs:
 
 ```
-==> step 1/2: nf-core/fetchngs@1.12.0  (light: --skip_fastq_download true)
+==> step 1/2: nf-core/fetchngs@1.12.0 (DAG preview)
 NFCORE_FETCHNGS:SRA:SRA_IDS_TO_RUNINFO … SRA_TO_SAMPLESHEET …
-==> step 2/2: nf-core/rnaseq@3.14.0
+==> step 2/2: nf-core/rnaseq@3.14.0 (DAG preview)
 NFCORE_RNASEQ:RNASEQ:FASTQC … TRIMGALORE … PREPARE_GENOME:SALMON_INDEX …
 ```
 
-Two caveats, because they're real. `-stub-run` only fakes a module that ships a
-`stub:` block — coverage varies (demo 4/4, rnaseq 19/61, fetchngs 1/10), so
-un-stubbed modules run for real on the pipeline's **test** data. "Light" means
-test-scale, **not zero**: nf-chain sets any schema-declared download-skip param
-it finds (fetchngs' `skip_fastq_download` → 0 bytes pulled), but a pipeline whose
-test inputs are FastQs and whose staging modules aren't stubbed (rnaseq) still
-stages those test FastQs — tens of MB, versus the multi-GB of a real chain run.
-It uses each pipeline's own test data, so it's a task-graph preview, not your
-chain's data run.
+Unlike `-stub-run`, which will fail if a community pipeline has un-stubbed modules,
+`nf-chain preview` works reliably across all nf-core pipelines.
 
-For a chain-level wiring check instead, `nextflow run build_nf/main.nf -stub-run`
-shows the two chain steps instantly.
+For an instant chain-level wiring test on the fly:
+```console
+nf-chain run examples/sra_to_rnaseq.flow --stub-run
+```
+
 
 ## How the chaining works
 
@@ -170,7 +168,7 @@ required input may be satisfied by auto-wiring. Missing inputs are caught by
 Keep completions fresh while you work:
 
 ```console
-$ nfchain watch examples/sra_to_rnaseq.flow
+$ nf-chain watch examples/sra_to_rnaseq.flow
 ✓ 14:02:11  nf-core/fetchngs → nf-core/rnaseq
 ```
 
@@ -187,19 +185,19 @@ if you'd rather not see the squiggle. Flow files are **parsed, never executed**.
 Steps may only pass keyword arguments. Values are literals or an upstream
 output (`sra.samplesheet`). `rev="3.14.0"` pins that step.
 
-## Two ways to run a chain
+## Running a chain
 
-`nfchain build` writes both:
+`nf-chain build` writes both:
 
 - **`run.sh` (default, recommended)** — runs each pipeline as an ordinary
   top-level `nextflow run`, in order, wiring each step's published output into
   the next step's input. You see **every task of every pipeline live**, exactly
-  like running nf-core by hand. `nfchain run` uses this.
+  like running nf-core by hand. `nf-chain run` uses this.
 - **`main.nf` (nested DAG)** — one Nextflow driver process per pipeline, each
   shelling out to a child `nextflow run`. Nextflow manages the graph, but the
   child's tasks are hidden: you see one `NFCORE_SRA  0 of 1` line for the whole
   duration of that pipeline, which looks like a hang during a long download. Use
-  `nfchain run --nested` (or run `main.nf` directly) if you want it.
+  `nf-chain run --nested` (or run `main.nf` directly) if you want it.
 
 ```console
 $ build_nf/run.sh docker
@@ -210,6 +208,22 @@ $ build_nf/run.sh docker
 ==> step 2/2: nf-core/rnaseq@3.14.0
 [PROCESS .. / ......] NFCORE_RNASEQ:RNASEQ:...
 ```
+
+### Production Options: S3 Results, Scratch Storage, and Reports
+
+```console
+# Direct results and scratch workdir to high-speed storage or S3, and generate HTML reports:
+nf-chain run examples/sra_to_rnaseq.flow \
+    --profile docker \
+    --results s3://my-bucket/runs/exp1 \
+    --work-dir /mnt/scratch/work \
+    --report
+```
+
+- **`--results <path>`**: Automatically handles AWS authentication and directs final outputs.
+- **`-w / --work-dir <path>`**: Directs heavy intermediate scratch files away from the local directory (accepts local paths or `s3://`).
+- **`--report`**: Automatically generates Nextflow `report.html` and `timeline.html` execution charts.
+- **`--temp` / `--ephemeral`**: Runs completely on the fly in a temporary directory without leaving `build_nf/` files in the repository.
 
 ### Forwarding Nextflow flags (Seqera Platform / Tower, reports, etc.)
 
@@ -229,11 +243,12 @@ If you're stuck watching `main.nf` show `NFCORE_SRA  0 of 1` and nothing else,
 it is **not hung** — the nested pipeline is running; its task output is in
 `build_nf/work/<hash>/.command.out`. The generated processes set `debug true` to
 echo that log, but some Nextflow console renderers only flush it on completion,
-so `run.sh` (or `nfchain run`) is the reliable way to watch tasks live.
+so `run.sh` (or `nf-chain run`) is the reliable way to watch tasks live.
 
 **Don't run `nextflow run main.nf` when you want to watch progress** — that's the
 nested driver, and it shows one line per pipeline by construction. Use
-`./run.sh <profile>` or `nfchain run`.
+`./run.sh <profile>` or `nf-chain run`.
+
 
 ## What gets generated
 
@@ -329,7 +344,7 @@ container, which means config parsing and wiring already succeeded.
 **`Unknown configuration profile: 'docker'`.** The generated `nextflow.config`
 defines the profiles, and Nextflow reads it from the script's directory — so run
 the generated `main.nf`, not a hand-written one, and rebuild after upgrading
-nf-chain (`nfchain build`) so the config includes the profile block.
+nf-chain (`nf-chain build`) so the config includes the profile block.
 
 **Can I use `-profile test`?** Yes, but know what it does: nf-core's `test`
 profile makes each pipeline run on *its own* bundled mini-dataset, which means

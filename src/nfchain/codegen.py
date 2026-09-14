@@ -319,6 +319,7 @@ def render_run_sh(chain: Chain) -> str:
         "# the runs are linkable in `nextflow log` and the logs. Override with",
         "# NFCHAIN_TAG=myexp ./run.sh ...  (must start with a letter).",
         'TAG="${NFCHAIN_TAG:-run_$(date +%Y%m%d_%H%M%S)}"',
+        'WORKDIR="${NFCHAIN_WORKDIR:-}"',
         "# Legacy config parser: accepts the check_max() in 2024-era nf-core configs.",
         'export NXF_SYNTAX_PARSER="${NXF_SYNTAX_PARSER:-v1}"',
         'echo "run tag: $TAG   (steps: ' + ", ".join(f"{s.var}=${{TAG}}_{s.var}" for s in chain.steps) + ')"',
@@ -349,6 +350,7 @@ def render_run_sh(chain: Chain) -> str:
         if inp is not None:
             cmd.append(f"--input {inp}")
         cmd.append(f'--outdir "$OUTDIR/{step.var}"')
+        cmd.append('"${WORKDIR:+-work-dir "$WORKDIR"}"')
         cmd.append("-resume")
         # Safe even when EXTRA is empty under `set -u` on bash 3.2 (macOS).
         cmd.append('"${EXTRA[@]+"${EXTRA[@]}"}"')
@@ -363,7 +365,7 @@ def render_run_sh(chain: Chain) -> str:
         lines.append(
             f'echo "  {step.var:<8} run=${{TAG}}_{step.var}   outdir=$OUTDIR/{step.var}"'
         )
-    lines.append('echo "  work dir: $HERE/run/work"')
+    lines.append('echo "  work dir: ${WORKDIR:-$HERE/run/work}"')
     lines.append('echo "  see all runs linked:  (cd \\"$HERE/run\\" && nextflow log)"')
     return "\n".join(lines) + "\n"
 
@@ -503,8 +505,41 @@ def render_tw_sh(chain: Chain) -> str:
     return "\n".join(lines) + "\n"
 
 
+def render_preview_sh(chain: Chain) -> str:
+    """Preview each pipeline's task DAG with Nextflow -preview (no execution, zero errors)."""
+    lines = [
+        "#!/usr/bin/env bash",
+        "# " + BANNER.lstrip("/ "),
+        "# Full task DAG preview — lists all tasks across all pipelines without executing commands.",
+        "#   ./preview.sh [profile]   (default: test,docker)",
+        "set -uo pipefail",
+        "",
+        'HERE="$(cd "$(dirname "$0")" && pwd)"',
+        'PROFILE="${1:-test,docker}"',
+        'export NXF_SYNTAX_PARSER="${NXF_SYNTAX_PARSER:-v1}"',
+        'mkdir -p "$HERE/preview" && cd "$HERE/preview"',
+        "",
+    ]
+    for i, step in enumerate(chain.steps, 1):
+        ref = step.ref
+        cmd = [
+            "nextflow run " + ref.full_name,
+            "-r " + ref.revision,
+            '-profile "$PROFILE"',
+            "-preview",
+            f'--outdir "prev_{step.var}"',
+        ]
+        lines.append(
+            f'echo "==> step {i}/{len(chain.steps)}: {ref.full_name}@{ref.revision} (DAG preview)"'
+        )
+        lines.append("    " + " \\\n        ".join(cmd) + " || true")
+        lines.append("")
+    lines.append('echo "DAG preview complete"')
+    return "\n".join(lines) + "\n"
+
+
 def write(chain: Chain, outdir: Path) -> list[Path]:
-    """Write main.nf, run.sh, nextflow.config and params/*. Returns written paths."""
+    """Write main.nf, run.sh, preview.sh, nextflow.config and params/*. Returns written paths."""
     outdir.mkdir(parents=True, exist_ok=True)
     (outdir / "params").mkdir(exist_ok=True)
 
@@ -529,6 +564,11 @@ def write(chain: Chain, outdir: Path) -> list[Path]:
     stubs_sh.write_text(render_stubs_sh(chain))
     _safe_chmod(stubs_sh)
     written.append(stubs_sh)
+
+    preview_sh = outdir / "preview.sh"
+    preview_sh.write_text(render_preview_sh(chain))
+    _safe_chmod(preview_sh)
+    written.append(preview_sh)
 
     tw_sh = outdir / "run.tw.sh"
     tw_sh.write_text(render_tw_sh(chain))

@@ -178,3 +178,58 @@ def test_run_temp_flag_uses_ephemeral_dir(monkeypatch):
     assert "nfchain_" in captured["outdir"]
     assert captured["temp"] is True
 
+
+def test_run_work_dir_and_report_flags(monkeypatch):
+    captured = {}
+
+    def fake_build(args):
+        return 0
+
+    def fake_which(_):
+        return "/usr/bin/nextflow"
+
+    def fake_call(cmd, **kwargs):
+        captured["cmd"] = cmd
+        captured["env"] = kwargs.get("env")
+        return 0
+
+    monkeypatch.setattr(cli, "cmd_build", fake_build)
+    monkeypatch.setattr(cli.shutil, "which", fake_which)
+    monkeypatch.setattr(cli.subprocess, "call", fake_call)
+
+    # Sequential mode
+    assert cli.main(["run", "f.flow", "-w", "/scratch/work", "--report"]) == 0
+    assert captured["env"]["NFCHAIN_WORKDIR"] == "/scratch/work"
+    assert "-with-report" in captured["cmd"]
+    assert "-with-timeline" in captured["cmd"]
+
+    # Nested mode
+    assert cli.main(["run", "f.flow", "--nested", "-w", "/scratch/work", "--report"]) == 0
+    assert "-work-dir" in captured["cmd"]
+    assert "/scratch/work" in captured["cmd"]
+    assert "-with-report" in captured["cmd"]
+
+
+def test_preview_subcommand_invokes_preview_sh(monkeypatch):
+    captured = {}
+
+    def fake_build(args):
+        return 0
+
+    def fake_which(_):
+        return "/usr/bin/nextflow"
+
+    def fake_call(cmd, **kwargs):
+        captured["cmd"] = cmd
+        return 0
+
+    monkeypatch.setattr(cli, "cmd_build", fake_build)
+    monkeypatch.setattr(cli.shutil, "which", fake_which)
+    monkeypatch.setattr(cli.subprocess, "call", fake_call)
+
+    assert cli.main(["preview", "f.flow"]) == 0
+    assert captured["cmd"][0] == "bash"
+    assert captured["cmd"][1].endswith("preview.sh")
+    assert captured["cmd"][2] == "test,docker"
+
+
