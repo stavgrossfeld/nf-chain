@@ -453,6 +453,9 @@ def render_tw_sh(chain: Chain) -> str:
         lines.append(
             f'    mkparams {pf} "{{{",".join(overrides)}}}" {launch_pf}'
         )
+        # --wait=SUCCEEDED polls the Seqera API status endpoint (not the log) and
+        # exits non-zero unless the run reaches SUCCEEDED; `set -e` then stops the
+        # chain, so the next step launches ONLY after the API confirms success.
         lines.append(
             f'    tw launch https://github.com/{ref.full_name} -r {ref.revision} "${{WS[@]}}" \\\n'
             f'        --compute-env="$TW_COMPUTE_ENV" \\\n'
@@ -460,6 +463,12 @@ def render_tw_sh(chain: Chain) -> str:
             f"        --params-file={launch_pf} \\\n"
             f"        --wait=SUCCEEDED"
         )
+        nxt = (
+            "→ launching next step"
+            if i < len(chain.steps)
+            else "(final step)"
+        )
+        lines.append(f'    echo "    ✓ {step.var} SUCCEEDED per Seqera API {nxt}"')
         lines.append("")
     lines.append('echo "chain complete → $TW_OUTDIR"')
     return "\n".join(lines) + "\n"
