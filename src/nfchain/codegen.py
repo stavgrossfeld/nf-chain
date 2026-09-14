@@ -454,8 +454,9 @@ def render_tw_sh(chain: Chain) -> str:
             f'    mkparams {pf} "{{{",".join(overrides)}}}" {launch_pf}'
         )
         lines.append(
-            f'    tw launch {ref.full_name} -r {ref.revision} "${{WS[@]}}" \\\n'
+            f'    tw launch https://github.com/{ref.full_name} -r {ref.revision} "${{WS[@]}}" \\\n'
             f'        --compute-env="$TW_COMPUTE_ENV" \\\n'
+            f'        --name="${{TW_TAG:-chain}}_{step.var}" \\\n'
             f"        --params-file={launch_pf} \\\n"
             f"        --wait=SUCCEEDED"
         )
