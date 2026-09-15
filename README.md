@@ -12,6 +12,8 @@ rna = rnaseq(input=sra.samplesheet, genome="GRCh38")
 
 `nf-chain` parses the flow, auto-wires samplesheets between pipelines, queries live schemas for type-checking and parameter validation, and compiles a production-ready Nextflow execution project.
 
+![nf-chain Demo](assets/demo.gif)
+
 ---
 
 ## Installation

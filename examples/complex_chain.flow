@@ -1,0 +1,20 @@
+"""A 5-step multi-omics & QC chain demonstrating branching and auto-wiring.
+
+1. fetchngs: Pulls raw SRA reads and emits the samplesheet.
+2. demo: Runs FastQC & MultiQC on raw reads (auto-wired from fetchngs).
+3. rnaseq: Aligns and quantifies transcripts (auto-wired from fetchngs).
+4. sarek: Variant calling pipeline consuming RNA-seq BAMs (explicitly wired).
+5. atacseq: Chromatin accessibility analysis (auto-wired from fetchngs).
+"""
+
+from nf-core import fetchngs
+from nf-core import demo
+from nf-core import rnaseq
+from nf-core import sarek
+from nf-core import atacseq
+
+sra = fetchngs(ids=["SRR6357070", "SRR6357071"], download_method="sratools")
+qc = demo()
+rna = rnaseq(genome="R64-1-1")
+var = sarek(input=sra.samplesheet, genome="R64-1-1")
+atac = atacseq(genome="R64-1-1")
